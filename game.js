@@ -685,6 +685,34 @@
     insertPieceInOriginalOrder(piece);
   }
 
+  function getPlacedPieceAtTarget(targetId, excludedPieceId) {
+    return getPieces().find((piece) => (
+      piece.dataset.pieceId !== excludedPieceId
+      && piece.classList.contains('placed')
+      && piece.dataset.currentTargetId === targetId
+    )) || null;
+  }
+
+  function getSlotByTargetId(targetId) {
+    return getSlots().find((slot) => slot.dataset.targetId === targetId) || null;
+  }
+
+  function moveBlockingPiece(blockingPiece, drag) {
+    const blockingPieceId = blockingPiece.dataset.pieceId;
+
+    if (drag.wasPlaced && drag.originTargetId) {
+      const originSlot = getSlotByTargetId(drag.originTargetId);
+      if (originSlot) {
+        markPiecePlaced(blockingPieceId, drag.originTargetId);
+        placePiece(blockingPiece, originSlot);
+        return;
+      }
+    }
+
+    markPieceLoose(blockingPieceId);
+    setPieceLoose(blockingPiece);
+  }
+
   function focusFirstLoosePiece() {
     const piece = getPieces().find((candidate) => {
       const pieceId = candidate.dataset.pieceId;
@@ -724,6 +752,7 @@
       piece,
       pieceId,
       wasPlaced: Boolean(gameState.pieces[pieceId]?.placed),
+      originTargetId: piece.dataset.currentTargetId || gameState.pieces[pieceId]?.currentTargetId || null,
       pointerId: event.pointerId,
       width: rect.width,
       height: rect.height,
@@ -785,6 +814,10 @@
       && closestSlot
       && closestSlot.distance <= closestSlot.snapThreshold
     ) {
+      const blockingPiece = getPlacedPieceAtTarget(closestSlot.targetId, drag.pieceId);
+      if (blockingPiece) {
+        moveBlockingPiece(blockingPiece, drag);
+      }
       markPiecePlaced(drag.pieceId, closestSlot.targetId);
       placePiece(drag.piece, closestSlot.slot);
       updateProgress();

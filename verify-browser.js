@@ -205,15 +205,39 @@ async function verifyPlayModes(page) {
   assert.equal(wrongPlaced.parentId, 'board');
   assert.equal(wrongPlaced.progress, '1 / 4');
 
-  for (const pieceId of ['piece-0-1', 'piece-1-0', 'piece-1-1']) {
-    await dragPieceToSlot(page, pieceId);
-  }
+  await dragPieceToSlot(page, 'piece-0-1', 'piece-0-0');
+  await dragPieceToSlot(page, 'piece-1-0', 'piece-1-1');
+  await dragPieceToSlot(page, 'piece-1-1', 'piece-1-0');
 
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
 
   await page.locator('.mode-button[data-mode="correction"]').click();
   await page.locator('.mode-button[data-mode="guide"]').click();
+  await assertGrid(page, 2);
+}
+
+async function verifyFreePlacementBoardSwap(page) {
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');
+  await dragPieceToSlot(page, 'piece-0-1', 'piece-0-0');
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-0-0');
+
+  const placements = await page.evaluate(() => (
+    Object.fromEntries(
+      Array.from(document.querySelectorAll('.piece.placed')).map((piece) => [
+        piece.dataset.pieceId,
+        piece.dataset.currentTargetId,
+      ]),
+    )
+  ));
+
+  assert.equal(placements['piece-0-0'], 'piece-0-0');
+  assert.equal(placements['piece-0-1'], 'piece-0-1');
+  assert.equal(new Set(Object.values(placements)).size, Object.values(placements).length);
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 2 / 4');
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
   await assertGrid(page, 2);
 }
 
@@ -241,6 +265,7 @@ async function verifyDesktop(page) {
   await assertDesktopPuzzleLayout(page);
   await verifyImageLibrary(page);
   await verifyPlayModes(page);
+  await verifyFreePlacementBoardSwap(page);
 
   await page.locator('.grid-button[data-grid-size="3"]').click();
   await assertGrid(page, 3);
