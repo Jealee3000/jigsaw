@@ -170,13 +170,28 @@ async function verifyPlayModes(page) {
   await assertPuzzleAspect(page, 500 / 300);
 
   assert.equal(await page.locator('.piece-label').first().isVisible(), false);
+  assert.equal(await page.locator('.mode-button[data-mode="labels"]').count(), 0);
+  assert.equal(await page.locator('.mode-button[data-mode="hint"]').count(), 1);
 
-  await page.locator('.mode-button[data-mode="labels"]').click();
-  assert.equal(await page.locator('.piece-label').first().isVisible(), true);
+  await page.locator('.mode-button[data-mode="hint"]').click();
+  await page.locator('.slot.guide-hint[data-hint-ready="true"]').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.slot.guide-hint').count(), 1);
+  await page.locator('.mode-button[data-mode="hint"]').click();
+  await page.waitForTimeout(80);
+  assert.equal(await page.locator('.slot.guide-hint').count(), 2);
+  assert.equal(await page.locator('.slot.guide-hint .piece').count(), 0);
 
   await page.locator('.mode-button[data-mode="guide"]').click();
   assert.equal(await page.locator('#board').evaluate((node) => node.classList.contains('hide-guide')), true);
-  assert.equal(await page.locator('.slot.guide-hint').count(), 1);
+  assert.equal(await page.locator('.slot.guide-hint').count(), 2);
+  const hint = await page.locator('.slot.guide-hint').first().evaluate((slot) => ({
+    backgroundImage: getComputedStyle(slot, '::before').backgroundImage,
+    opacity: getComputedStyle(slot, '::before').opacity,
+    score: Number(slot.dataset.hintScore || 0),
+  }));
+  assert.match(hint.backgroundImage, /url\(/);
+  assert.equal(hint.opacity, '0.42');
+  assert.ok(hint.score > 8, `hint should contain image detail, score=${hint.score}`);
 
   await page.locator('.mode-button[data-mode="correction"]').click();
   await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');
@@ -199,7 +214,6 @@ async function verifyPlayModes(page) {
 
   await page.locator('.mode-button[data-mode="correction"]').click();
   await page.locator('.mode-button[data-mode="guide"]').click();
-  await page.locator('.mode-button[data-mode="labels"]').click();
   await assertGrid(page, 2);
 }
 

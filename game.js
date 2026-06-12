@@ -33,11 +33,11 @@
   let activeDrag = null;
   let resizeObserver = null;
   let puzzleRatio = 600 / 420;
-  let guideHintPieceId = null;
+  const hintPieces = new Map();
+  let hintGeneration = 0;
   const modeState = {
     guide: true,
     correction: true,
-    labels: false,
   };
 
   function getFallbackImageUrl() {
@@ -154,23 +154,143 @@
 
   function updateModeControls() {
     board.classList.toggle('hide-guide', !modeState.guide);
-    root.classList.toggle('show-labels', modeState.labels);
     root.classList.toggle('free-placement', !modeState.correction);
 
     for (const button of modeButtons) {
-      const isActive = modeState[button.dataset.mode];
+      const isActive = Boolean(modeState[button.dataset.mode]);
       button.classList.toggle('active', isActive);
       button.setAttribute('aria-pressed', String(isActive));
     }
   }
 
-  function chooseGuideHint() {
-    guideHintPieceId = pieceIds[Math.floor(Math.random() * pieceIds.length)] || null;
+  function getImageElement(url) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = url;
+    });
+  }
+
+  async function findDetailedHintPieceId(url, size, allowedPieceIds = pieceIds) {
+    const image = await getImageElement(url);
+    const sampleSize = 32;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    const width = sampleSize * size;
+    const height = sampleSize * size;
+
+    canvas.width = width;
+    canvas.height = height;
+    context.drawImage(image, 0, 0, width, height);
+
+    const allowed = new Set(allowedPieceIds);
+    const scores = pieceIds.filter((pieceId) => allowed.has(pieceId)).map((pieceId) => {
+      const { row, col } = parsePieceId(pieceId);
+      const data = context.getImageData(
+        col * sampleSize,
+        row * sampleSize,
+        sampleSize,
+        sampleSize,
+      ).data;
+      let mean = 0;
+      let meanSquared = 0;
+      let saturation = 0;
+      const pixels = data.length / 4;
+
+      for (let index = 0; index < data.length; index += 4) {
+        const red = data[index];
+        const green = data[index + 1];
+        const blue = data[index + 2];
+        const light = (red + green + blue) / 3;
+        mean += light;
+        meanSquared += light * light;
+        saturation += Math.max(red, green, blue) - Math.min(red, green, blue);
+      }
+
+      mean /= pixels;
+      meanSquared /= pixels;
+
+      return {
+        pieceId,
+        score: Math.sqrt(Math.max(0, meanSquared - mean * mean)) + saturation / pixels / 3,
+      };
+    }).sort((first, second) => second.score - first.score);
+
+    const usefulScores = scores.filter((entry) => entry.score > 8);
+    const candidates = usefulScores.length > 0
+      ? usefulScores.slice(0, Math.max(1, Math.ceil(usefulScores.length / 2)))
+      : scores;
+    return candidates[Math.floor(Math.random() * candidates.length)] || scores[0] || null;
+  }
+
+  function getBlankHintCandidates() {
+    const occupiedTargets = new Set(
+      getPieces()
+        .filter((piece) => piece.classList.contains('placed'))
+        .map((piece) => piece.dataset.currentTargetId)
+        .filter(Boolean),
+    );
+
+    return pieceIds.filter((pieceId) => (
+      !occupiedTargets.has(pieceId)
+      && !hintPieces.has(pieceId)
+    ));
+  }
+
+  function addHintPiece() {
+    const candidates = getBlankHintCandidates();
+    if (candidates.length === 0) {
+      setStatus('已经没有空白格可以提示了');
+      return;
+    }
+
+    const fallback = candidates[Math.floor(Math.random() * candidates.length)];
+    const generation = hintGeneration;
+    const url = currentImageUrl;
+    const size = gridSize;
+
+    hintPieces.set(fallback, 0);
+    updateGuideHint();
+    setStatus(`已添加 ${hintPieces.size} 个提示`);
+
+    findDetailedHintPieceId(url, size, candidates)
+      .then((entry) => {
+        if (generation !== hintGeneration || url !== currentImageUrl || size !== gridSize || !entry) {
+          return;
+        }
+
+        if (!hintPieces.has(fallback) || (entry.pieceId !== fallback && hintPieces.has(entry.pieceId))) {
+          return;
+        }
+
+        hintPieces.delete(fallback);
+        hintPieces.set(entry.pieceId, entry.score);
+        updateGuideHint();
+      })
+      .catch(() => {
+        updateGuideHint();
+      });
+  }
+
+  function clearHints() {
+    hintPieces.clear();
+    hintGeneration += 1;
+    updateGuideHint();
   }
 
   function updateGuideHint() {
     for (const slot of getSlots()) {
-      slot.classList.toggle('guide-hint', !modeState.guide && slot.dataset.targetId === guideHintPieceId);
+      const score = hintPieces.get(slot.dataset.targetId) || 0;
+      const isHint = hintPieces.has(slot.dataset.targetId);
+      slot.classList.toggle('guide-hint', isHint);
+      if (isHint) {
+        slot.dataset.hintReady = String(score > 0);
+        slot.dataset.hintScore = String(Math.round(score));
+      } else {
+        delete slot.dataset.hintReady;
+        delete slot.dataset.hintScore;
+      }
     }
   }
 
@@ -215,6 +335,7 @@
     }
 
     await setCurrentImage(image.url);
+    clearHints();
     renderImageLibrary();
     resetGame({ preserveFocus: true });
 
@@ -523,6 +644,10 @@
   }
 
   function placePiece(piece, slot) {
+    if (hintPieces.delete(slot.dataset.targetId)) {
+      updateGuideHint();
+    }
+
     piece.classList.remove('dragging');
     piece.classList.add('placed');
     piece.style.removeProperty('--drag-width');
@@ -762,10 +887,13 @@
 
   function onModeButtonClick(event) {
     const mode = event.currentTarget.dataset.mode;
-    modeState[mode] = !modeState[mode];
-    if (mode === 'guide' && !modeState.guide) {
-      chooseGuideHint();
+
+    if (mode === 'hint') {
+      addHintPiece();
+      return;
     }
+
+    modeState[mode] = !modeState[mode];
     updateModeControls();
     updateGuideHint();
 
@@ -781,7 +909,7 @@
   function resetGame(options = {}) {
     gameState = resetGameState(pieceIds);
     activeDrag = null;
-    chooseGuideHint();
+    clearHints();
     clearReadySlots();
     celebration.hidden = true;
     renderPuzzle();
@@ -801,7 +929,7 @@
     gridSize = size;
     pieceIds = createPieceIds(gridSize);
     trayPieceIds = shufflePieceIds(pieceIds);
-    chooseGuideHint();
+    clearHints();
     setGridVariables();
     updateGridButtons();
     resetGame({ preserveFocus: true });
@@ -874,7 +1002,6 @@
   setPuzzleImage(currentImageUrl);
   setPuzzleRatio(600, 420);
   setGridVariables();
-  chooseGuideHint();
   updateModeControls();
   renderPuzzle();
   updateProgress();

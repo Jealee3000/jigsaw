@@ -369,6 +369,7 @@ h1 {
   position: relative;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   border: 2px dashed var(--slot-line);
   background:
     linear-gradient(135deg, rgba(255, 255, 255, .26), rgba(255, 255, 255, .08));
@@ -379,11 +380,21 @@ h1 {
   background: rgba(255, 217, 88, .26);
 }
 
-.board.hide-guide .slot.guide-hint {
-  background-color: #dff7ff;
+.slot.guide-hint {
+  --hint-opacity: .42;
+}
+
+.slot.guide-hint::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   background-image: var(--puzzle-image);
   background-size: calc(var(--grid-size) * 100%) calc(var(--grid-size) * 100%);
   background-position: var(--piece-position);
+  background-repeat: no-repeat;
+  opacity: var(--hint-opacity);
+  pointer-events: none;
 }
 
 .tray {
@@ -448,18 +459,6 @@ h1 {
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.show-labels .piece-label {
-  display: block;
-}
-
-.show-labels .piece.compact .piece-label {
-  right: 4px;
-  left: 4px;
-  bottom: 4px;
-  padding: 3px 4px;
-  font-size: 11px;
 }
 
 .piece.dragging {
