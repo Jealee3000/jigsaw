@@ -22,6 +22,13 @@ function cleanupBrowserTestImages() {
 }
 
 async function dragPieceToSlot(page, pieceId, targetId = pieceId) {
+  await page.evaluate(({ pieceId: id, targetId: target }) => {
+    document.querySelector(`.piece[data-piece-id="${id}"]`)?.scrollIntoView({
+      block: 'center',
+      inline: 'center',
+    });
+  }, { pieceId, targetId });
+
   const coords = await page.evaluate(({ pieceId: id, targetId: target }) => {
     const piece = document.querySelector(`.piece[data-piece-id="${id}"]`);
     const slot = document.querySelector(`.slot[data-target-id="${target}"]`);
@@ -98,6 +105,36 @@ async function assertPuzzleAspect(page, expectedRatio) {
   assert.ok(Math.abs(ratios.piece - expectedRatio) < 0.03, `piece ratio ${ratios.piece}`);
 }
 
+async function assertDesktopPuzzleLayout(page) {
+  const layout = await page.evaluate(() => {
+    const library = document.querySelector('.image-library').getBoundingClientRect();
+    const board = document.querySelector('.board').getBoundingClientRect();
+    const tray = document.querySelector('.tray').getBoundingClientRect();
+    const slot = document.querySelector('.slot').getBoundingClientRect();
+    const piece = document.querySelector('#tray > .piece').getBoundingClientRect();
+
+    return {
+      libraryRight: library.right,
+      boardLeft: board.left,
+      boardRight: board.right,
+      trayLeft: tray.left,
+      boardWidth: board.width,
+      slotWidth: slot.width,
+      slotHeight: slot.height,
+      pieceWidth: piece.width,
+      pieceHeight: piece.height,
+      boardCenterDelta: Math.abs((board.left + board.width / 2) - (window.innerWidth / 2)),
+    };
+  });
+
+  assert.ok(layout.libraryRight < layout.boardLeft, `library should be left of board: ${JSON.stringify(layout)}`);
+  assert.ok(layout.boardRight < layout.trayLeft, `tray should be right of board: ${JSON.stringify(layout)}`);
+  assert.ok(layout.boardWidth >= 620, `board should be larger: ${layout.boardWidth}`);
+  assert.ok(layout.boardCenterDelta < 110, `board should be near center: ${layout.boardCenterDelta}`);
+  assert.ok(Math.abs(layout.slotWidth - layout.pieceWidth) <= 3, `piece width ${layout.pieceWidth} vs slot ${layout.slotWidth}`);
+  assert.ok(Math.abs(layout.slotHeight - layout.pieceHeight) <= 3, `piece height ${layout.pieceHeight} vs slot ${layout.slotHeight}`);
+}
+
 async function verifyPlayModes(page) {
   await uploadTestImage(page, 'browser-test-wide.svg', '#8edcff', '#ef6f63', 500, 300);
   await assertPuzzleAspect(page, 500 / 300);
@@ -156,6 +193,7 @@ async function verifyDesktop(page) {
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
 
   await assertGrid(page, 2);
+  await assertDesktopPuzzleLayout(page);
   await verifyImageLibrary(page);
   await verifyPlayModes(page);
 
@@ -209,7 +247,7 @@ async function verifyDesktop(page) {
 
   await page.locator('#replay-button').click();
   await page.locator('.grid-button[data-grid-size="3"]').click();
-  await dragPieceToSlot(page, 'piece-2-2');
+  await page.locator('.piece[data-piece-id="piece-2-2"]').press('Enter');
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 1 / 9');
 }
 

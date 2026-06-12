@@ -31,6 +31,7 @@
   let imageLibrary = [];
   let imageLoadToken = 0;
   let activeDrag = null;
+  let resizeObserver = null;
   const modeState = {
     guide: true,
     correction: true,
@@ -239,6 +240,26 @@
     root.style.setProperty('--tray-columns', gridSize === 4 ? 4 : gridSize);
   }
 
+  function syncLoosePieceSize() {
+    const slot = slotLayer.querySelector('.slot');
+    if (!slot) {
+      return;
+    }
+
+    const rect = slot.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+
+    const trayWidth = tray.clientWidth || rect.width;
+    const gap = 12;
+    const columns = Math.max(1, Math.floor((trayWidth + gap) / (rect.width + gap)));
+
+    root.style.setProperty('--piece-width', `${rect.width}px`);
+    root.style.setProperty('--piece-height', `${rect.height}px`);
+    root.style.setProperty('--tray-columns', columns);
+  }
+
   function parsePieceId(pieceId) {
     const [, row, col] = pieceId.match(/^piece-(\d+)-(\d+)$/) || [];
     return {
@@ -314,6 +335,8 @@
     for (const pieceId of trayPieceIds) {
       tray.appendChild(createPiece(pieceId));
     }
+
+    requestAnimationFrame(syncLoosePieceSize);
   }
 
   function getSnapThreshold(slotRect) {
@@ -771,6 +794,13 @@
   imageInput.addEventListener('change', onImageChange);
   resetButton.addEventListener('click', () => resetGame());
   replayButton.addEventListener('click', () => resetGame());
+
+  if ('ResizeObserver' in window) {
+    resizeObserver = new ResizeObserver(syncLoosePieceSize);
+    resizeObserver.observe(board);
+  } else {
+    window.addEventListener('resize', syncLoosePieceSize);
+  }
 
   setPuzzleImage(currentImageUrl);
   setPuzzleRatio(600, 420);
