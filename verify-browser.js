@@ -122,6 +122,7 @@ async function assertDesktopPuzzleLayout(page) {
       viewportHeight: window.innerHeight,
       documentWidth: document.documentElement.scrollWidth,
       documentHeight: document.documentElement.scrollHeight,
+      libraryToBoardGap: board.left - library.right,
       libraryRight: library.right,
       boardLeft: board.left,
       boardRight: board.right,
@@ -136,6 +137,7 @@ async function assertDesktopPuzzleLayout(page) {
       pieceWidth: piece.width,
       pieceHeight: piece.height,
       boardCenterDelta: Math.abs((board.left + board.width / 2) - (window.innerWidth / 2)),
+      trayRight: tray.right,
       imageListCanScroll: imageList.scrollHeight > imageList.clientHeight,
       imageListOverflowY: imageListStyle.overflowY,
       trayOverflowX: trayStyle.overflowX,
@@ -148,9 +150,10 @@ async function assertDesktopPuzzleLayout(page) {
   assert.ok(layout.documentWidth <= layout.viewportWidth + 1, `page horizontal scroll: ${JSON.stringify(layout)}`);
   assert.ok(layout.documentHeight <= layout.viewportHeight + 1, `page vertical scroll: ${JSON.stringify(layout)}`);
   assert.ok(layout.libraryRight < layout.boardLeft, `library should be left of board: ${JSON.stringify(layout)}`);
+  assert.ok(layout.libraryToBoardGap <= 40, `too much blank space before board: ${JSON.stringify(layout)}`);
   assert.ok(layout.boardRight < layout.trayLeft, `tray should be right of board: ${JSON.stringify(layout)}`);
   assert.ok(layout.boardWidth >= 400, `board should remain usable: ${layout.boardWidth}`);
-  assert.ok(layout.boardCenterDelta < 110, `board should be near center: ${layout.boardCenterDelta}`);
+  assert.ok(layout.trayRight <= layout.viewportWidth + 1, `tray should remain inside viewport: ${JSON.stringify(layout)}`);
   assert.ok(layout.imageListCanScroll, `image list should scroll: ${JSON.stringify(layout)}`);
   assert.equal(layout.imageListOverflowY, 'auto');
   assert.notEqual(layout.trayOverflowY, 'auto');
@@ -173,6 +176,7 @@ async function verifyPlayModes(page) {
 
   await page.locator('.mode-button[data-mode="guide"]').click();
   assert.equal(await page.locator('#board').evaluate((node) => node.classList.contains('hide-guide')), true);
+  assert.equal(await page.locator('.slot.guide-hint').count(), 1);
 
   await page.locator('.mode-button[data-mode="correction"]').click();
   await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');

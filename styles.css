@@ -20,7 +20,6 @@
   --piece-height: 160px;
   --tray-width: 520px;
   --tray-height: 520px;
-  --play-offset: 0px;
   --puzzle-image: linear-gradient(180deg, #8edcff 0%, #dff7ff 52%, #64bf68 53% 100%);
 }
 
@@ -319,7 +318,6 @@ h1 {
   gap: 24px;
   justify-content: start;
   width: calc(var(--board-width) + var(--tray-width) + 24px);
-  margin-left: var(--play-offset);
   overflow: visible;
 }
 
@@ -379,6 +377,13 @@ h1 {
 .slot.ready {
   border-color: var(--yellow);
   background: rgba(255, 217, 88, .26);
+}
+
+.board.hide-guide .slot.guide-hint {
+  background-color: #dff7ff;
+  background-image: var(--puzzle-image);
+  background-size: calc(var(--grid-size) * 100%) calc(var(--grid-size) * 100%);
+  background-position: var(--piece-position);
 }
 
 .tray {

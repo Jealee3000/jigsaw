@@ -33,6 +33,7 @@
   let activeDrag = null;
   let resizeObserver = null;
   let puzzleRatio = 600 / 420;
+  let guideHintPieceId = null;
   const modeState = {
     guide: true,
     correction: true,
@@ -163,6 +164,16 @@
     }
   }
 
+  function chooseGuideHint() {
+    guideHintPieceId = pieceIds[Math.floor(Math.random() * pieceIds.length)] || null;
+  }
+
+  function updateGuideHint() {
+    for (const slot of getSlots()) {
+      slot.classList.toggle('guide-hint', !modeState.guide && slot.dataset.targetId === guideHintPieceId);
+    }
+  }
+
   function renderImageLibrary() {
     imageList.replaceChildren();
 
@@ -267,26 +278,21 @@
     const playGap = getPixels(playStyle.columnGap);
     const boardBorderX = getPixels(boardStyle.borderLeftWidth) + getPixels(boardStyle.borderRightWidth);
     const boardBorderY = getPixels(boardStyle.borderTopWidth) + getPixels(boardStyle.borderBottomWidth);
-    const playStart = layoutRect.left + libraryRect.width + layoutGap;
-    const shellCenter = shellRect.left + shellRect.width / 2;
     const verticalRoom = window.innerHeight - layoutRect.top - 14;
     const maxOuterHeight = Math.max(180, verticalRoom);
     const contentRatio = Math.max(0.2, puzzleRatio);
     const widthFromHeight = (maxOuterHeight - boardBorderY) * contentRatio + boardBorderX;
-    const maxByLeftSpace = Math.max(240, 2 * (shellCenter - playStart));
-    const maxByRightTray = Math.max(240, (shellRect.right - shellCenter - playGap + boardBorderX) / 1.5);
-    const boardOuterWidth = Math.max(240, Math.floor(Math.min(maxByLeftSpace, maxByRightTray, widthFromHeight)));
+    const horizontalRoom = shellRect.width - libraryRect.width - layoutGap - playGap;
+    const maxByHorizontalRoom = Math.max(240, (horizontalRoom + boardBorderX) / 2);
+    const boardOuterWidth = Math.max(240, Math.floor(Math.min(maxByHorizontalRoom, widthFromHeight)));
     const boardContentWidth = Math.max(160, boardOuterWidth - boardBorderX);
     const boardContentHeight = Math.max(120, Math.floor(boardContentWidth / contentRatio));
     const boardOuterHeight = boardContentHeight + boardBorderY;
-    const desiredBoardLeft = shellCenter - boardOuterWidth / 2;
-    const playOffset = Math.max(0, desiredBoardLeft - playStart);
     const pieceWidth = boardContentWidth / gridSize;
     const pieceHeight = boardContentHeight / gridSize;
 
     root.style.setProperty('--board-width', `${boardOuterWidth}px`);
     root.style.setProperty('--board-height', `${boardOuterHeight}px`);
-    root.style.setProperty('--play-offset', `${playOffset}px`);
     root.style.setProperty('--tray-width', `${boardContentWidth}px`);
     root.style.setProperty('--tray-height', `${boardContentHeight}px`);
     root.style.setProperty('--piece-width', `${pieceWidth}px`);
@@ -335,6 +341,7 @@
     const slot = document.createElement('div');
     slot.className = 'slot';
     slot.dataset.targetId = pieceId;
+    slot.style.setProperty('--piece-position', getPiecePosition(pieceId));
     slot.setAttribute('aria-label', `${getPieceLabel(pieceId)} 拼图位置`);
     return slot;
   }
@@ -381,6 +388,8 @@
     for (const pieceId of pieceIds) {
       slotLayer.appendChild(createSlot(pieceId));
     }
+
+    updateGuideHint();
 
     for (const pieceId of trayPieceIds) {
       tray.appendChild(createPiece(pieceId));
@@ -754,7 +763,11 @@
   function onModeButtonClick(event) {
     const mode = event.currentTarget.dataset.mode;
     modeState[mode] = !modeState[mode];
+    if (mode === 'guide' && !modeState.guide) {
+      chooseGuideHint();
+    }
     updateModeControls();
+    updateGuideHint();
 
     if (mode === 'correction') {
       resetGame({ preserveFocus: true });
@@ -768,6 +781,7 @@
   function resetGame(options = {}) {
     gameState = resetGameState(pieceIds);
     activeDrag = null;
+    chooseGuideHint();
     clearReadySlots();
     celebration.hidden = true;
     renderPuzzle();
@@ -787,6 +801,7 @@
     gridSize = size;
     pieceIds = createPieceIds(gridSize);
     trayPieceIds = shufflePieceIds(pieceIds);
+    chooseGuideHint();
     setGridVariables();
     updateGridButtons();
     resetGame({ preserveFocus: true });
@@ -859,6 +874,7 @@
   setPuzzleImage(currentImageUrl);
   setPuzzleRatio(600, 420);
   setGridVariables();
+  chooseGuideHint();
   updateModeControls();
   renderPuzzle();
   updateProgress();
