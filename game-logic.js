@@ -1,12 +1,21 @@
-const PIECES = Object.freeze([
-  'sky-puppy',
-  'sun-house',
-  'grass-puppy',
-  'garden-toys',
-]);
+const SUPPORTED_GRID_SIZES = Object.freeze([2, 3, 4]);
 
-function createPiecesState() {
-  return PIECES.reduce((pieces, pieceId) => {
+function createPieceIds(gridSize) {
+  if (!SUPPORTED_GRID_SIZES.includes(gridSize)) {
+    throw new Error(`Unsupported grid size: ${gridSize}`);
+  }
+
+  const ids = [];
+  for (let row = 0; row < gridSize; row += 1) {
+    for (let col = 0; col < gridSize; col += 1) {
+      ids.push(`piece-${row}-${col}`);
+    }
+  }
+  return ids;
+}
+
+function createPiecesState(pieceIds) {
+  return pieceIds.reduce((pieces, pieceId) => {
     pieces[pieceId] = {
       placed: false,
       targetId: pieceId,
@@ -15,15 +24,17 @@ function createPiecesState() {
   }, {});
 }
 
-function createGameState() {
+function createGameState(pieceIds = createPieceIds(2)) {
   return {
-    pieces: createPiecesState(),
+    pieceIds: [...pieceIds],
+    pieces: createPiecesState(pieceIds),
     placedCount: 0,
   };
 }
 
 function cloneGameState(state) {
   return {
+    pieceIds: [...state.pieceIds],
     pieces: Object.fromEntries(
       Object.entries(state.pieces).map(([pieceId, piece]) => [
         pieceId,
@@ -50,7 +61,6 @@ function tryPlacePiece(state, options) {
 
   if (distance <= options.snapThreshold) {
     piece.placed = true;
-    piece.targetId = options.targetId;
     next.placedCount += 1;
   }
 
@@ -58,15 +68,16 @@ function tryPlacePiece(state, options) {
 }
 
 function isComplete(state) {
-  return PIECES.every((pieceId) => state.pieces[pieceId]?.placed === true);
+  return state.pieceIds.every((pieceId) => state.pieces[pieceId]?.placed === true);
 }
 
-function resetGameState() {
-  return createGameState();
+function resetGameState(pieceIds = createPieceIds(2)) {
+  return createGameState(pieceIds);
 }
 
 const PuppyJigsawLogic = {
-  PIECES,
+  SUPPORTED_GRID_SIZES,
+  createPieceIds,
   createGameState,
   tryPlacePiece,
   isComplete,

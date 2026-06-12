@@ -2,208 +2,151 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  PIECES,
+  createPieceIds,
   createGameState,
   tryPlacePiece,
   isComplete,
   resetGameState,
 } = require('./game-logic');
 
-test('exports the expected puzzle piece ids', () => {
-  assert.deepEqual(PIECES, [
-    'sky-puppy',
-    'sun-house',
-    'grass-puppy',
-    'garden-toys',
+test('creates ordered piece ids for supported grid sizes', () => {
+  assert.deepEqual(createPieceIds(2), [
+    'piece-0-0',
+    'piece-0-1',
+    'piece-1-0',
+    'piece-1-1',
   ]);
+  assert.equal(createPieceIds(3).length, 9);
+  assert.equal(createPieceIds(4).length, 16);
+  assert.equal(createPieceIds(4)[15], 'piece-3-3');
 });
 
-test('exports frozen puzzle piece ids', () => {
-  assert.equal(Object.isFrozen(PIECES), true);
+test('rejects unsupported grid sizes', () => {
+  assert.throws(() => createPieceIds(1), /grid size/i);
+  assert.throws(() => createPieceIds(5), /grid size/i);
 });
 
-test('initializes each piece with its correct target id', () => {
-  const state = createGameState();
+test('initializes dynamic state with matching target ids', () => {
+  const pieceIds = createPieceIds(3);
+  const state = createGameState(pieceIds);
 
-  for (const pieceId of PIECES) {
+  assert.equal(Object.keys(state.pieces).length, 9);
+  for (const pieceId of pieceIds) {
     assert.equal(state.pieces[pieceId].targetId, pieceId);
+    assert.equal(state.pieces[pieceId].placed, false);
   }
 });
 
-test('places the correct piece when it is within the snap threshold', () => {
-  const state = createGameState();
+test('places a dynamic piece at its matching target', () => {
+  const pieceIds = createPieceIds(3);
+  const state = createGameState(pieceIds);
 
   const next = tryPlacePiece(state, {
-    pieceId: 'sky-puppy',
-    targetId: 'sky-puppy',
-    pieceCenter: { x: 104, y: 98 },
-    targetCenter: { x: 100, y: 100 },
-    snapThreshold: 32,
-  });
-
-  assert.equal(next.pieces['sky-puppy'].placed, true);
-  assert.equal(next.pieces['sky-puppy'].targetId, 'sky-puppy');
-  assert.equal(next.placedCount, 1);
-});
-
-test('places a piece exactly at the euclidean snap threshold', () => {
-  const state = createGameState();
-
-  const next = tryPlacePiece(state, {
-    pieceId: 'sky-puppy',
-    targetId: 'sky-puppy',
+    pieceId: 'piece-2-1',
+    targetId: 'piece-2-1',
     pieceCenter: { x: 3, y: 4 },
     targetCenter: { x: 0, y: 0 },
     snapThreshold: 5,
   });
 
-  assert.equal(next.pieces['sky-puppy'].placed, true);
+  assert.equal(next.pieces['piece-2-1'].placed, true);
   assert.equal(next.placedCount, 1);
+  assert.equal(state.pieces['piece-2-1'].placed, false);
 });
 
-test('does not place a piece just outside the euclidean snap threshold', () => {
-  const state = createGameState();
+test('does not place a dynamic piece just outside the euclidean snap threshold', () => {
+  const state = createGameState(createPieceIds(2));
 
   const next = tryPlacePiece(state, {
-    pieceId: 'sky-puppy',
-    targetId: 'sky-puppy',
+    pieceId: 'piece-0-0',
+    targetId: 'piece-0-0',
     pieceCenter: { x: 3, y: 4 },
     targetCenter: { x: 0, y: 0 },
     snapThreshold: 4.99,
   });
 
-  assert.equal(next.pieces['sky-puppy'].placed, false);
+  assert.equal(next.pieces['piece-0-0'].placed, false);
   assert.equal(next.placedCount, 0);
 });
 
-test('uses the piece target id from state when checking the target', () => {
-  const state = createGameState();
-  state.pieces['sky-puppy'] = {
-    placed: false,
-    targetId: 'grass-puppy',
-  };
+test('does not place a dynamic piece on a wrong target', () => {
+  const state = createGameState(createPieceIds(4));
 
   const next = tryPlacePiece(state, {
-    pieceId: 'sky-puppy',
-    targetId: 'grass-puppy',
-    pieceCenter: { x: 100, y: 100 },
-    targetCenter: { x: 100, y: 100 },
-    snapThreshold: 32,
+    pieceId: 'piece-3-3',
+    targetId: 'piece-0-0',
+    pieceCenter: { x: 0, y: 0 },
+    targetCenter: { x: 0, y: 0 },
+    snapThreshold: 20,
   });
 
-  assert.equal(next.pieces['sky-puppy'].placed, true);
-  assert.equal(next.placedCount, 1);
-});
-
-test('does not place a piece when it is outside the snap threshold', () => {
-  const state = createGameState();
-
-  const next = tryPlacePiece(state, {
-    pieceId: 'sky-puppy',
-    targetId: 'sky-puppy',
-    pieceCenter: { x: 20, y: 20 },
-    targetCenter: { x: 100, y: 100 },
-    snapThreshold: 32,
-  });
-
-  assert.equal(next.pieces['sky-puppy'].placed, false);
+  assert.equal(next.pieces['piece-3-3'].placed, false);
   assert.equal(next.placedCount, 0);
 });
 
-test('does not mutate the input state when placing a piece', () => {
-  const state = createGameState();
-
-  const next = tryPlacePiece(state, {
-    pieceId: 'sky-puppy',
-    targetId: 'sky-puppy',
-    pieceCenter: { x: 50, y: 50 },
-    targetCenter: { x: 50, y: 50 },
-    snapThreshold: 32,
+test('does not mutate input state or count an already placed dynamic piece twice', () => {
+  const state = createGameState(createPieceIds(2));
+  const placed = tryPlacePiece(state, {
+    pieceId: 'piece-0-0',
+    targetId: 'piece-0-0',
+    pieceCenter: { x: 0, y: 0 },
+    targetCenter: { x: 0, y: 0 },
+    snapThreshold: 20,
+  });
+  const repeated = tryPlacePiece(placed, {
+    pieceId: 'piece-0-0',
+    targetId: 'piece-0-0',
+    pieceCenter: { x: 0, y: 0 },
+    targetCenter: { x: 0, y: 0 },
+    snapThreshold: 20,
   });
 
-  assert.notEqual(next, state);
-  assert.notEqual(next.pieces, state.pieces);
-  assert.equal(state.pieces['sky-puppy'].placed, false);
+  assert.equal(state.pieces['piece-0-0'].placed, false);
   assert.equal(state.placedCount, 0);
+  assert.equal(repeated.placedCount, 1);
 });
 
-test('does not count an already placed piece again', () => {
-  let state = createGameState();
-  state = tryPlacePiece(state, {
-    pieceId: 'sky-puppy',
-    targetId: 'sky-puppy',
-    pieceCenter: { x: 50, y: 50 },
-    targetCenter: { x: 50, y: 50 },
-    snapThreshold: 32,
-  });
+test('completion depends on all current dynamic pieces', () => {
+  const pieceIds = createPieceIds(4);
+  let state = createGameState(pieceIds);
 
-  const next = tryPlacePiece(state, {
-    pieceId: 'sky-puppy',
-    targetId: 'sky-puppy',
-    pieceCenter: { x: 50, y: 50 },
-    targetCenter: { x: 50, y: 50 },
-    snapThreshold: 32,
-  });
-
-  assert.equal(next.pieces['sky-puppy'].placed, true);
-  assert.equal(next.placedCount, 1);
-});
-
-test('does not place a piece on the wrong target', () => {
-  const state = createGameState();
-
-  const next = tryPlacePiece(state, {
-    pieceId: 'sky-puppy',
-    targetId: 'grass-puppy',
-    pieceCenter: { x: 100, y: 100 },
-    targetCenter: { x: 100, y: 100 },
-    snapThreshold: 32,
-  });
-
-  assert.equal(next.pieces['sky-puppy'].placed, false);
-  assert.equal(next.placedCount, 0);
-});
-
-test('detects completion only after all four pieces are placed', () => {
-  let state = createGameState();
-
-  for (const pieceId of ['sky-puppy', 'sun-house', 'grass-puppy', 'garden-toys']) {
+  for (const pieceId of pieceIds) {
     state = tryPlacePiece(state, {
       pieceId,
       targetId: pieceId,
-      pieceCenter: { x: 50, y: 50 },
-      targetCenter: { x: 50, y: 50 },
-      snapThreshold: 32,
+      pieceCenter: { x: 0, y: 0 },
+      targetCenter: { x: 0, y: 0 },
+      snapThreshold: 20,
     });
   }
 
+  assert.equal(state.placedCount, 16);
   assert.equal(isComplete(state), true);
-  assert.equal(state.placedCount, 4);
 });
 
-test('does not report completion for inconsistent placed count state', () => {
-  const state = createGameState();
-  state.placedCount = 4;
-  state.pieces['sky-puppy'].placed = true;
-  state.pieces['sun-house'].placed = true;
-  state.pieces['grass-puppy'].placed = true;
+test('does not report completion for inconsistent dynamic placed count state', () => {
+  const pieceIds = createPieceIds(3);
+  const state = createGameState(pieceIds);
+  state.placedCount = 9;
+  state.pieces['piece-0-0'].placed = true;
 
   assert.equal(isComplete(state), false);
 });
 
-test('reset clears placed state and completion', () => {
-  let state = createGameState();
+test('reset rebuilds state for the current dynamic pieces', () => {
+  const pieceIds = createPieceIds(4);
+  let state = createGameState(pieceIds);
   state = tryPlacePiece(state, {
-    pieceId: 'sky-puppy',
-    targetId: 'sky-puppy',
-    pieceCenter: { x: 50, y: 50 },
-    targetCenter: { x: 50, y: 50 },
-    snapThreshold: 32,
+    pieceId: 'piece-0-0',
+    targetId: 'piece-0-0',
+    pieceCenter: { x: 0, y: 0 },
+    targetCenter: { x: 0, y: 0 },
+    snapThreshold: 20,
   });
 
-  const reset = resetGameState(state);
+  const reset = resetGameState(pieceIds);
 
   assert.equal(reset.placedCount, 0);
-  assert.equal(isComplete(reset), false);
-  assert.equal(reset.pieces['sky-puppy'].placed, false);
+  assert.equal(Object.keys(reset.pieces).length, 16);
+  assert.equal(reset.pieces['piece-0-0'].placed, false);
 });
