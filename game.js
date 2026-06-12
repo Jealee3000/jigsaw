@@ -549,6 +549,54 @@
       .sort((a, b) => a.distance - b.distance)[0] || null;
   }
 
+  function getBestOverlappedSlot(pieceRect, point) {
+    return getSlots()
+      .map((slot) => {
+        const details = getSlotDetails(slot, point);
+        const rect = details.rect;
+        const overlapWidth = Math.max(
+          0,
+          Math.min(pieceRect.right, rect.right) - Math.max(pieceRect.left, rect.left),
+        );
+        const overlapHeight = Math.max(
+          0,
+          Math.min(pieceRect.bottom, rect.bottom) - Math.max(pieceRect.top, rect.top),
+        );
+        const overlapArea = overlapWidth * overlapHeight;
+        const slotArea = Math.max(1, rect.width * rect.height);
+
+        return {
+          ...details,
+          overlapArea,
+          overlapRatio: overlapArea / slotArea,
+        };
+      })
+      .sort((a, b) => b.overlapArea - a.overlapArea)[0] || null;
+  }
+
+  function getDropSlot(point, piece) {
+    if (modeState.correction) {
+      return getClosestSlot(point);
+    }
+
+    const pieceRect = piece.getBoundingClientRect();
+    const overlappedSlot = getBestOverlappedSlot(pieceRect, point);
+    return overlappedSlot?.overlapRatio > 0 ? overlappedSlot : getClosestSlot(point);
+  }
+
+  function isDropReady(slotDetails) {
+    if (!slotDetails) {
+      return false;
+    }
+
+    if (!modeState.correction && typeof slotDetails.overlapRatio === 'number') {
+      return slotDetails.overlapRatio >= 0.35
+        || slotDetails.distance <= slotDetails.snapThreshold;
+    }
+
+    return slotDetails.distance <= slotDetails.snapThreshold;
+  }
+
   function clearReadySlots() {
     for (const slot of getSlots()) {
       slot.classList.remove('ready');
@@ -574,7 +622,7 @@
   function setReadySlot(slotDetails) {
     clearReadySlots();
 
-    if (slotDetails && slotDetails.distance <= slotDetails.snapThreshold) {
+    if (isDropReady(slotDetails)) {
       slotDetails.slot.classList.add('ready');
     }
   }
@@ -582,9 +630,11 @@
   function movePieceToPointer(piece, clientX, clientY) {
     const width = activeDrag?.width || piece.getBoundingClientRect().width;
     const height = activeDrag?.height || piece.getBoundingClientRect().height;
+    const offsetX = activeDrag?.offsetX ?? width / 2;
+    const offsetY = activeDrag?.offsetY ?? height / 2;
 
-    piece.style.left = `${clientX - width / 2}px`;
-    piece.style.top = `${clientY - height / 2}px`;
+    piece.style.left = `${clientX - offsetX}px`;
+    piece.style.top = `${clientY - offsetY}px`;
   }
 
   function updateProgress() {
@@ -756,6 +806,8 @@
       pointerId: event.pointerId,
       width: rect.width,
       height: rect.height,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
       startX: event.clientX,
       startY: event.clientY,
       didMove: false,
@@ -768,7 +820,7 @@
     piece.style.setProperty('--drag-height', `${rect.height}px`);
     piece.classList.add('dragging');
     movePieceToPointer(piece, event.clientX, event.clientY);
-    setReadySlot(getClosestSlot({ x: event.clientX, y: event.clientY }));
+    setReadySlot(getDropSlot({ x: event.clientX, y: event.clientY }, piece));
   }
 
   function onPointerMove(event) {
@@ -780,7 +832,7 @@
     activeDrag.didMove = activeDrag.didMove
       || Math.hypot(event.clientX - activeDrag.startX, event.clientY - activeDrag.startY) > 6;
     movePieceToPointer(activeDrag.piece, event.clientX, event.clientY);
-    setReadySlot(getClosestSlot({ x: event.clientX, y: event.clientY }));
+    setReadySlot(getDropSlot({ x: event.clientX, y: event.clientY }, activeDrag.piece));
   }
 
   function onPointerUp(event) {
@@ -790,7 +842,8 @@
 
     const drag = activeDrag;
     const point = { x: event.clientX, y: event.clientY };
-    const closestSlot = getClosestSlot(point);
+    movePieceToPointer(drag.piece, event.clientX, event.clientY);
+    const closestSlot = getDropSlot(point, drag.piece);
     const nextState = closestSlot && modeState.correction
       ? tryPlacePiece(gameState, {
         pieceId: drag.pieceId,
@@ -812,7 +865,7 @@
     if (
       !modeState.correction
       && closestSlot
-      && closestSlot.distance <= closestSlot.snapThreshold
+      && isDropReady(closestSlot)
     ) {
       const blockingPiece = getPlacedPieceAtTarget(closestSlot.targetId, drag.pieceId);
       if (blockingPiece) {

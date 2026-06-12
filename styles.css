@@ -491,6 +491,19 @@ h1 {
   pointer-events: auto;
 }
 
+.piece.placed.dragging {
+  position: fixed;
+  z-index: 20;
+  width: var(--drag-width, auto);
+  height: var(--drag-height, auto);
+  border-width: 5px;
+  border-radius: 18px;
+  box-shadow: 0 8px 0 var(--shadow);
+  pointer-events: none;
+  cursor: grabbing;
+  transform: scale(1.04);
+}
+
 .piece.placed .piece-label {
   display: none;
 }

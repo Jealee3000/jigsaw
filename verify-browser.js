@@ -56,6 +56,46 @@ async function dragPieceToSlot(page, pieceId, targetId = pieceId) {
   await page.waitForTimeout(80);
 }
 
+async function dragPieceToSlotByGrabOffset(page, pieceId, targetId, offsetXRatio, offsetYRatio) {
+  const coords = await page.evaluate(({
+    pieceId: id,
+    targetId: target,
+    offsetXRatio: xRatio,
+    offsetYRatio: yRatio,
+  }) => {
+    const piece = document.querySelector(`.piece[data-piece-id="${id}"]`);
+    const slot = document.querySelector(`.slot[data-target-id="${target}"]`);
+    if (!piece || !slot) return null;
+
+    const pieceRect = piece.getBoundingClientRect();
+    const slotRect = slot.getBoundingClientRect();
+    const offsetX = pieceRect.width * xRatio;
+    const offsetY = pieceRect.height * yRatio;
+    return {
+      from: {
+        x: pieceRect.left + offsetX,
+        y: pieceRect.top + offsetY,
+      },
+      to: {
+        x: slotRect.left + offsetX,
+        y: slotRect.top + offsetY,
+      },
+    };
+  }, {
+    pieceId,
+    targetId,
+    offsetXRatio,
+    offsetYRatio,
+  });
+
+  assert.ok(coords, `missing piece ${pieceId} or slot ${targetId}`);
+  await page.mouse.move(coords.from.x, coords.from.y);
+  await page.mouse.down();
+  await page.mouse.move(coords.to.x, coords.to.y, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(80);
+}
+
 async function trayOrder(page) {
   return page.locator('#tray > .piece').evaluateAll((nodes) => (
     nodes.map((node) => node.dataset.pieceId)
@@ -221,7 +261,7 @@ async function verifyFreePlacementBoardSwap(page) {
   await page.locator('.mode-button[data-mode="correction"]').click();
   await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');
   await dragPieceToSlot(page, 'piece-0-1', 'piece-0-0');
-  await dragPieceToSlot(page, 'piece-0-0', 'piece-0-0');
+  await dragPieceToSlotByGrabOffset(page, 'piece-0-0', 'piece-0-0', 0.86, 0.5);
 
   const placements = await page.evaluate(() => (
     Object.fromEntries(
