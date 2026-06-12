@@ -343,6 +343,26 @@ async function verifyEquivalentPieces(page) {
 
   await page.locator('#reset-button').click();
   await assertGrid(page, 2);
+
+  await uploadSvgText(
+    page,
+    'browser-test-edge-detail.svg',
+    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">
+      <rect width="400" height="400" fill="#c8b4f4"/>
+      <rect x="197" y="0" width="3" height="200" fill="#ffffff"/>
+      <path d="M199 16 C200 42 199 64 200 88" fill="none" stroke="#bde04b" stroke-width="1"/>
+      <rect x="0" y="200" width="200" height="200" fill="#67c86f"/>
+      <rect x="200" y="200" width="200" height="200" fill="#ef6f63"/>
+    </svg>`,
+  );
+
+  const edgeDetailGroup = await page.evaluate(() => (
+    window.__puppyJigsawDebug?.equivalentTargets?.['piece-0-0'] || []
+  ));
+  assert.deepEqual(new Set(edgeDetailGroup), new Set(['piece-0-0']));
+
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 0 / 4');
 }
 
 async function verifyBrowserPersistence(page) {

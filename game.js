@@ -267,6 +267,26 @@
     return colorDistance + detailDistance * 2 + saturationDistance * 0.5;
   }
 
+  function localDifference(first, second) {
+    if (!first.pixels || !second.pixels || first.pixels.length !== second.pixels.length) {
+      return 0;
+    }
+
+    const differences = [];
+    for (let index = 0; index < first.pixels.length; index += 3) {
+      differences.push(Math.hypot(
+        first.pixels[index] - second.pixels[index],
+        first.pixels[index + 1] - second.pixels[index + 1],
+        first.pixels[index + 2] - second.pixels[index + 2],
+      ));
+    }
+
+    differences.sort((a, b) => b - a);
+    const count = Math.max(1, Math.ceil(differences.length * 0.02));
+    const strongest = differences.slice(0, count);
+    return strongest.reduce((sum, value) => sum + value, 0) / strongest.length;
+  }
+
   function buildEquivalentTargets(features) {
     const targets = defaultEquivalentTargets();
 
@@ -275,7 +295,8 @@
       for (let secondIndex = firstIndex + 1; secondIndex < features.length; secondIndex += 1) {
         const second = features[secondIndex];
         const lowDetail = first.detail < 18 && second.detail < 18;
-        const similar = featureDistance(first, second) < 18;
+        const similar = featureDistance(first, second) < 18
+          && localDifference(first, second) < 32;
 
         if (!lowDetail || !similar) {
           continue;
@@ -291,7 +312,7 @@
 
   async function analyzePieceFeatures(url, size) {
     const image = await getImageElement(url);
-    const sampleSize = 24;
+    const sampleSize = 48;
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d', { willReadFrequently: true });
     const width = sampleSize * size;
@@ -315,6 +336,7 @@
       let light = 0;
       let lightSquared = 0;
       let saturation = 0;
+      const pixelsSignature = [];
       const pixels = data.length / 4;
 
       for (let index = 0; index < data.length; index += 4) {
@@ -326,6 +348,7 @@
         red += pixelRed;
         green += pixelGreen;
         blue += pixelBlue;
+        pixelsSignature.push(pixelRed, pixelGreen, pixelBlue);
         light += pixelLight;
         lightSquared += pixelLight * pixelLight;
         saturation += Math.max(pixelRed, pixelGreen, pixelBlue)
@@ -345,6 +368,7 @@
         blue,
         detail: Math.sqrt(Math.max(0, lightSquared - light * light)),
         saturation: saturation / pixels,
+        pixels: pixelsSignature,
       };
     });
   }
