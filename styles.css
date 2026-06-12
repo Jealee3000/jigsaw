@@ -7,14 +7,13 @@
   --muted: #5a6872;
   --cream: #fff6dd;
   --paper: #ffffff;
-  --blue: #63b8e8;
-  --sky: #8edcff;
   --yellow: #ffd958;
-  --green: #64bf68;
   --coral: #ef6f63;
-  --mint: #58c87a;
   --shadow: rgba(38, 49, 58, .18);
   --slot-line: rgba(38, 49, 58, .42);
+  --grid-size: 2;
+  --tray-columns: 2;
+  --puzzle-image: linear-gradient(180deg, #8edcff 0%, #dff7ff 52%, #64bf68 53% 100%);
 }
 
 html,
@@ -76,35 +75,19 @@ h1 {
   line-height: 1.35;
 }
 
-.progress {
+.controls {
   display: flex;
-  gap: 8px;
-  min-width: 168px;
-  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
 }
 
-.star {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 3px solid var(--ink);
-  border-radius: 50%;
-  color: #cfd7dc;
-  background: var(--paper);
-  font-size: 21px;
-  line-height: 1;
-  box-shadow: 0 4px 0 var(--shadow);
-}
-
-.star.filled {
-  color: var(--yellow);
-  background: #fff1a9;
-}
-
+.file-control,
+.grid-button,
 .reset-button,
 .replay-button {
-  min-height: 56px;
+  min-height: 52px;
   border: 3px solid var(--ink);
   color: var(--ink);
   background: var(--paper);
@@ -113,20 +96,70 @@ h1 {
   transition: transform .15s ease, box-shadow .15s ease;
 }
 
+.file-control:hover,
+.grid-button:hover,
 .reset-button:hover,
 .replay-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 7px 0 var(--shadow);
 }
 
+.file-control:active,
+.grid-button:active,
 .reset-button:active,
 .replay-button:active {
   transform: translateY(3px);
   box-shadow: 0 3px 0 var(--shadow);
 }
 
+.file-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+.file-control input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.grid-control {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.grid-button {
+  min-width: 64px;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+.grid-button.active {
+  background: #fff1a9;
+}
+
+.progress {
+  min-width: 118px;
+  padding: 10px 12px;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: 0 5px 0 var(--shadow);
+  text-align: center;
+  font-size: 18px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .reset-button:focus-visible,
 .replay-button:focus-visible,
+.grid-button:focus-visible,
+.file-control:focus-within,
 .piece:focus-visible {
   outline: 5px solid #2457d6;
   outline-offset: 4px;
@@ -139,9 +172,15 @@ h1 {
   line-height: 1;
 }
 
+.status-message {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 15px;
+}
+
 .play-area {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(260px, 340px);
+  grid-template-columns: minmax(320px, 1fr) minmax(260px, 360px);
   align-items: center;
   gap: 22px;
 }
@@ -163,41 +202,32 @@ h1 {
   box-shadow: 0 12px 0 var(--shadow);
 }
 
-.guide-art {
+.guide-image,
+.slot-layer {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: .3;
+}
+
+.guide-image {
+  background-image: var(--puzzle-image);
+  background-size: cover;
+  background-position: center;
+  opacity: .32;
+}
+
+.slot-layer {
+  display: grid;
+  grid-template-columns: repeat(var(--grid-size), 1fr);
+  grid-template-rows: repeat(var(--grid-size), 1fr);
 }
 
 .slot {
-  position: absolute;
-  width: 50%;
-  height: 50%;
-  border: 3px dashed var(--slot-line);
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  border: 2px dashed var(--slot-line);
   background:
     linear-gradient(135deg, rgba(255, 255, 255, .26), rgba(255, 255, 255, .08));
-}
-
-.slot[data-target-id="sky-puppy"] {
-  top: 0;
-  left: 0;
-}
-
-.slot[data-target-id="sun-house"] {
-  top: 0;
-  left: 50%;
-}
-
-.slot[data-target-id="grass-puppy"] {
-  top: 50%;
-  left: 0;
-}
-
-.slot[data-target-id="garden-toys"] {
-  top: 50%;
-  left: 50%;
 }
 
 .slot.ready {
@@ -207,9 +237,9 @@ h1 {
 
 .tray {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(var(--tray-columns), minmax(0, 1fr));
   align-content: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 .piece {
@@ -217,26 +247,19 @@ h1 {
   display: block;
   width: 100%;
   min-width: 0;
-  aspect-ratio: 300 / 210;
+  aspect-ratio: 1 / 1;
   overflow: hidden;
   border: 5px solid var(--paper);
-  border-radius: 20px;
+  border-radius: 18px;
   color: var(--ink);
-  background-color: var(--sky);
-  background-image: var(--piece-scene), var(--piece-base);
-  background-size: 200% 200%, cover;
-  background-position: var(--piece-position), center;
+  background-color: #dff7ff;
+  background-image: var(--puzzle-image);
+  background-size: calc(var(--grid-size) * 100%) calc(var(--grid-size) * 100%);
+  background-position: var(--piece-position);
   box-shadow: 0 8px 0 var(--shadow);
   cursor: grab;
   touch-action: none;
   transition: transform .16s ease, box-shadow .16s ease;
-}
-
-.piece::before,
-.piece::after {
-  content: "";
-  position: absolute;
-  pointer-events: none;
 }
 
 .piece:hover {
@@ -251,22 +274,25 @@ h1 {
 .piece-label {
   position: absolute;
   z-index: 2;
-  right: 8px;
-  left: 8px;
+  right: 7px;
+  left: 7px;
   bottom: 7px;
-  max-width: none;
-  padding: 4px 8px;
+  padding: 4px 6px;
   overflow: hidden;
   border: 2px solid rgba(38, 49, 58, .22);
   border-radius: 999px;
   color: var(--ink);
-  background: rgba(255, 255, 255, .8);
-  font-size: clamp(13px, 2.2vw, 16px);
+  background: rgba(255, 255, 255, .82);
+  font-size: clamp(11px, 2vw, 15px);
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.1;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.piece.compact .piece-label {
+  display: none;
 }
 
 .piece.dragging {
@@ -283,8 +309,8 @@ h1 {
 .piece.placed {
   position: absolute;
   z-index: 5;
-  width: 50%;
-  height: 50%;
+  width: calc(100% / var(--grid-size));
+  height: calc(100% / var(--grid-size));
   border-width: 0;
   border-radius: 0;
   box-shadow: none;
@@ -296,112 +322,6 @@ h1 {
 
 .piece.placed .piece-label {
   display: none;
-}
-
-.piece[data-piece-id="sky-puppy"] {
-  --piece-base: linear-gradient(180deg, #8edcff 0%, #dff7ff 100%);
-  --piece-scene:
-    radial-gradient(circle at 74% 38%, #ffbd79 0 12%, transparent 13%),
-    radial-gradient(ellipse at 79% 71%, #f0a25e 0 17%, transparent 18%),
-    radial-gradient(circle at 88% 29%, #ffd958 0 12%, transparent 13%),
-    linear-gradient(180deg, transparent 0 70%, #70c86d 71% 100%);
-  --piece-position: left top;
-}
-
-.piece[data-piece-id="sky-puppy"]::before {
-  width: 26%;
-  height: 32%;
-  right: 20%;
-  top: 18%;
-  border-radius: 50% 50% 44% 44%;
-  background: #ffbd79;
-  box-shadow:
-    -18px -12px 0 -7px #ffbd79,
-    18px -12px 0 -7px #ffbd79,
-    -9px 14px 0 -10px #302820,
-    9px 14px 0 -10px #302820;
-}
-
-.piece[data-piece-id="sun-house"] {
-  --piece-base: linear-gradient(180deg, #b9efff 0%, #ecfbff 58%, #83d76a 59% 100%);
-  --piece-scene:
-    radial-gradient(circle at 67% 30%, #ffd958 0 16%, transparent 17%),
-    linear-gradient(135deg, transparent 0 43%, #ef6f63 44% 57%, transparent 58%),
-    linear-gradient(180deg, transparent 0 52%, #ffd37a 53% 89%, transparent 90%);
-  --piece-position: right top;
-}
-
-.piece[data-piece-id="sun-house"]::before {
-  width: 43%;
-  height: 38%;
-  left: 13%;
-  bottom: 13%;
-  border: 5px solid #5c4333;
-  border-radius: 12px;
-  background: #ffd37a;
-}
-
-.piece[data-piece-id="sun-house"]::after {
-  width: 55%;
-  height: 34%;
-  left: 7%;
-  bottom: 45%;
-  clip-path: polygon(50% 0, 100% 100%, 0 100%);
-  background: #ef6f63;
-}
-
-.piece[data-piece-id="grass-puppy"] {
-  --piece-base: linear-gradient(180deg, #dff7ff 0 30%, #86d86a 31% 100%);
-  --piece-scene:
-    radial-gradient(circle at 28% 62%, #85d2fb 0 17%, transparent 18%),
-    radial-gradient(ellipse at 34% 76%, #63b8e8 0 23%, transparent 24%),
-    linear-gradient(14deg, transparent 0 54%, rgba(255, 247, 223, .55) 55% 58%, transparent 59%);
-  --piece-position: left bottom;
-}
-
-.piece[data-piece-id="grass-puppy"]::before {
-  width: 31%;
-  height: 34%;
-  left: 18%;
-  top: 31%;
-  border-radius: 50% 50% 44% 44%;
-  background: #85d2fb;
-  box-shadow:
-    -16px -9px 0 -8px #85d2fb,
-    15px 30px 0 18px #63b8e8;
-}
-
-.piece[data-piece-id="garden-toys"] {
-  --piece-base: linear-gradient(180deg, #dff7ff 0 32%, #69c96b 33% 100%);
-  --piece-scene:
-    radial-gradient(circle at 32% 66%, #ff7777 0 17%, transparent 18%),
-    radial-gradient(circle at 62% 74%, #356c3d 0 6%, transparent 7%),
-    radial-gradient(circle at 83% 74%, #356c3d 0 6%, transparent 7%),
-    linear-gradient(90deg, transparent 0 43%, #58c87a 44% 86%, transparent 87%);
-  --piece-position: right bottom;
-}
-
-.piece[data-piece-id="garden-toys"]::before {
-  width: 27%;
-  aspect-ratio: 1;
-  left: 18%;
-  top: 44%;
-  border: 5px solid #5c4333;
-  border-radius: 50%;
-  background:
-    linear-gradient(45deg, transparent 45%, #fff7df 46% 54%, transparent 55%),
-    linear-gradient(-45deg, transparent 45%, #fff7df 46% 54%, transparent 55%),
-    #ff7777;
-}
-
-.piece[data-piece-id="garden-toys"]::after {
-  width: 35%;
-  height: 24%;
-  right: 12%;
-  top: 55%;
-  border: 5px solid #356c3d;
-  border-radius: 999px;
-  background: #58c87a;
 }
 
 .completion-overlay {
@@ -474,28 +394,21 @@ h1 {
   animation: pop .28s ease-out;
 }
 
-@media (max-width: 860px) {
-  .game-shell {
-    gap: 16px;
-  }
-
+@media (max-width: 900px) {
   .top-bar {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .progress {
+  .controls,
+  .progress,
+  .status-message {
     grid-column: 1 / -1;
-    order: 3;
     justify-content: flex-start;
   }
 
   .play-area {
     grid-template-columns: 1fr;
     align-items: start;
-  }
-
-  .tray {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -513,13 +426,13 @@ h1 {
     font-size: 16px;
   }
 
-  .progress {
-    min-width: 0;
+  .file-control,
+  .grid-button {
+    min-height: 46px;
   }
 
-  .star {
-    width: 34px;
-    height: 34px;
+  .grid-button {
+    min-width: 58px;
   }
 
   .reset-button {
@@ -537,13 +450,12 @@ h1 {
   }
 
   .tray {
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 10px;
   }
 
   .piece {
     border-width: 4px;
-    border-radius: 16px;
+    border-radius: 14px;
   }
 
   .completion-panel {
