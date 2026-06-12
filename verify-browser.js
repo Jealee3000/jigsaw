@@ -5,8 +5,21 @@ const { chromium } = require('playwright');
 
 const baseUrl = process.env.BASE_URL || 'http://localhost:4173/';
 const screenshotsDir = path.join(__dirname, 'artifacts');
+const imagesDir = path.join(__dirname, 'images');
 
 fs.mkdirSync(screenshotsDir, { recursive: true });
+
+function cleanupBrowserTestImages() {
+  if (!fs.existsSync(imagesDir)) {
+    return;
+  }
+
+  for (const fileName of fs.readdirSync(imagesDir)) {
+    if (fileName.startsWith('browser-test-')) {
+      fs.unlinkSync(path.join(imagesDir, fileName));
+    }
+  }
+}
 
 async function dragPieceToSlot(page, pieceId, targetId = pieceId) {
   const coords = await page.evaluate(({ pieceId: id, targetId: target }) => {
@@ -48,19 +61,43 @@ async function assertGrid(page, size) {
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), `完成 0 / ${size * size}`);
 }
 
-async function uploadTestImage(page) {
-  const uploadPath = path.join(screenshotsDir, 'upload-test.svg');
+async function currentPuzzleImage(page) {
+  return page.evaluate(() => (
+    getComputedStyle(document.documentElement).getPropertyValue('--puzzle-image')
+  ));
+}
+
+async function uploadTestImage(page, fileName, fill, accent) {
+  const uploadPath = path.join(screenshotsDir, fileName);
   fs.writeFileSync(
     uploadPath,
-    '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="420"><rect width="600" height="420" fill="#ffcc00"/><circle cx="300" cy="210" r="100" fill="#0077cc"/></svg>',
+    `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="420"><rect width="600" height="420" fill="${fill}"/><circle cx="300" cy="210" r="100" fill="${accent}"/></svg>`,
   );
 
   await page.locator('#image-input').setInputFiles(uploadPath);
-  await page.waitForTimeout(150);
-  const puzzleImage = await page.evaluate(() => (
-    getComputedStyle(document.documentElement).getPropertyValue('--puzzle-image')
-  ));
-  assert.match(puzzleImage, /blob:/);
+  const card = page.locator(`.image-card[data-image-name="${fileName}"]`);
+  await card.waitFor({ state: 'visible' });
+  await page.locator(`.image-card.selected[data-image-name="${fileName}"]`).waitFor({ state: 'visible' });
+
+  const puzzleImage = await currentPuzzleImage(page);
+  assert.match(puzzleImage, new RegExp(`/images/${fileName}`));
+  return card;
+}
+
+async function verifyImageLibrary(page) {
+  const initialCards = await page.locator('.image-card').count();
+  assert.ok(initialCards >= 0);
+
+  const firstCard = await uploadTestImage(page, 'browser-test-yellow.svg', '#ffcc00', '#0077cc');
+  const firstImage = await currentPuzzleImage(page);
+
+  await uploadTestImage(page, 'browser-test-green.svg', '#5bd47a', '#ef6f63');
+  const secondImage = await currentPuzzleImage(page);
+  assert.notEqual(firstImage, secondImage);
+
+  await firstCard.click();
+  await page.locator('.image-card.selected[data-image-name="browser-test-yellow.svg"]').waitFor({ state: 'visible' });
+  assert.equal(await currentPuzzleImage(page), firstImage);
 }
 
 async function verifyDesktop(page) {
@@ -68,7 +105,7 @@ async function verifyDesktop(page) {
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
 
   await assertGrid(page, 2);
-  await uploadTestImage(page);
+  await verifyImageLibrary(page);
 
   await page.locator('.grid-button[data-grid-size="3"]').click();
   await assertGrid(page, 3);
@@ -157,6 +194,8 @@ async function verifyMobile(page) {
 }
 
 (async () => {
+  cleanupBrowserTestImages();
+
   const browser = await chromium.launch({
     headless: true,
     executablePath: process.env.BROWSER_EXECUTABLE || undefined,
@@ -181,6 +220,7 @@ async function verifyMobile(page) {
     assert.deepEqual(consoleErrors, []);
   } finally {
     await browser.close();
+    cleanupBrowserTestImages();
   }
 
   console.log('browser verification passed');

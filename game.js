@@ -16,14 +16,17 @@
   const replayButton = document.querySelector('#replay-button');
   const celebration = document.querySelector('#celebration');
   const imageInput = document.querySelector('#image-input');
+  const imageList = document.querySelector('#image-list');
   const statusMessage = document.querySelector('#status-message');
   const gridButtons = Array.from(document.querySelectorAll('.grid-button'));
   const suppressedClicks = new WeakSet();
+  const fallbackImageUrl = getFallbackImageUrl();
 
   let gridSize = 2;
   let pieceIds = createPieceIds(gridSize);
   let gameState = createGameState(pieceIds);
-  let currentImageUrl = getFallbackImageUrl();
+  let currentImageUrl = fallbackImageUrl;
+  let imageLibrary = [];
   let activeDrag = null;
 
   function getFallbackImageUrl() {
@@ -82,6 +85,82 @@
 
   function setPuzzleImage(url) {
     root.style.setProperty('--puzzle-image', `url("${url}")`);
+  }
+
+  function renderImageLibrary() {
+    imageList.replaceChildren();
+
+    if (imageLibrary.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'image-empty';
+      empty.textContent = 'images 文件夹还没有图片';
+      imageList.appendChild(empty);
+      return;
+    }
+
+    for (const image of imageLibrary) {
+      const button = document.createElement('button');
+      const thumbnail = document.createElement('img');
+      const name = document.createElement('span');
+
+      button.className = 'image-card';
+      button.type = 'button';
+      button.dataset.imageName = image.name;
+      button.classList.toggle('selected', image.url === currentImageUrl);
+      button.setAttribute('aria-pressed', String(image.url === currentImageUrl));
+
+      thumbnail.src = image.url;
+      thumbnail.alt = image.name;
+      thumbnail.loading = 'lazy';
+
+      name.className = 'image-name';
+      name.textContent = image.name;
+
+      button.append(thumbnail, name);
+      button.addEventListener('click', () => selectLibraryImage(image));
+      imageList.appendChild(button);
+    }
+  }
+
+  function selectLibraryImage(image, options = {}) {
+    if (!image) {
+      return;
+    }
+
+    currentImageUrl = image.url;
+    setPuzzleImage(currentImageUrl);
+    renderImageLibrary();
+    resetGame({ preserveFocus: true });
+
+    if (!options.silent) {
+      setStatus(`已选择 ${image.name}`);
+    }
+  }
+
+  async function loadImageLibrary() {
+    try {
+      const response = await fetch('/api/images');
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '读取图片列表失败');
+      }
+
+      imageLibrary = Array.isArray(result.images) ? result.images : [];
+      renderImageLibrary();
+
+      if (imageLibrary.length > 0 && currentImageUrl === fallbackImageUrl) {
+        selectLibraryImage(imageLibrary[0], { silent: true });
+        setStatus(`已加载 ${imageLibrary.length} 张图片`);
+        return;
+      }
+
+      setStatus(imageLibrary.length > 0 ? `已加载 ${imageLibrary.length} 张图片` : '可以先上传一张图片');
+    } catch (error) {
+      imageLibrary = [];
+      renderImageLibrary();
+      setStatus('图片服务未连接，请用本地服务打开页面');
+    }
   }
 
   function setGridVariables() {
@@ -494,7 +573,7 @@
     setGridSize(Number(event.currentTarget.dataset.gridSize));
   }
 
-  function onImageChange(event) {
+  async function onImageChange(event) {
     const [file] = event.target.files;
     if (!file) {
       return;
@@ -502,17 +581,35 @@
 
     if (!file.type.startsWith('image/')) {
       setStatus('请选择图片文件');
+      imageInput.value = '';
       return;
     }
 
-    if (currentImageUrl && currentImageUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(currentImageUrl);
-    }
+    setStatus('正在上传图片');
 
-    currentImageUrl = URL.createObjectURL(file);
-    setPuzzleImage(currentImageUrl);
-    setStatus('图片只在本机使用');
-    resetGame({ preserveFocus: true });
+    try {
+      const formData = new FormData();
+      formData.append('image', file, file.name);
+
+      const response = await fetch('/api/images', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.error || '上传失败，请换一张图片');
+      }
+
+      imageLibrary = Array.isArray(result.images) ? result.images : [];
+      renderImageLibrary();
+      selectLibraryImage(result.image, { silent: true });
+      setStatus(`已上传 ${result.image.name}`);
+    } catch (error) {
+      setStatus(error.message || '上传失败，请换一张图片');
+    } finally {
+      imageInput.value = '';
+    }
   }
 
   for (const button of gridButtons) {
@@ -527,4 +624,5 @@
   setGridVariables();
   renderPuzzle();
   updateProgress();
+  loadImageLibrary();
 })();

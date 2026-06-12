@@ -13,12 +13,12 @@
     <header class="top-bar" aria-label="游戏状态">
       <div class="title-block">
         <h1>小狗家的拼图</h1>
-        <p>选择本机图片，再挑一个拼图大小</p>
+        <p>从本机图片库里挑一张，再选拼图大小</p>
       </div>
 
       <div class="controls" aria-label="拼图设置">
         <label class="file-control">
-          <span>选择图片</span>
+          <span>上传图片</span>
           <input id="image-input" type="file" accept="image/*">
         </label>
 
@@ -35,8 +35,15 @@
         <span aria-hidden="true">↻</span>
       </button>
 
-      <p class="status-message" id="status-message" role="status" aria-live="polite">图片只在本机使用</p>
+      <p class="status-message" id="status-message" role="status" aria-live="polite">正在读取图片列表</p>
     </header>
+
+    <section class="image-library" aria-label="图片列表">
+      <div class="library-heading">
+        <h2>图片列表</h2>
+      </div>
+      <div class="image-list" id="image-list" aria-live="polite"></div>
+    </section>
 
     <section class="play-area" aria-label="拼图区">
       <div class="board-wrap">

@@ -1,2 +1,4 @@
 .superpowers/
 artifacts/
+images/*
+!images/.gitkeep
