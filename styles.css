@@ -14,19 +14,25 @@
   --grid-size: 2;
   --tray-columns: 2;
   --puzzle-ratio: 600 / 420;
+  --board-width: 520px;
+  --board-height: 520px;
   --piece-width: 160px;
   --piece-height: 160px;
+  --tray-width: 520px;
+  --tray-height: 520px;
+  --play-offset: 0px;
   --puzzle-image: linear-gradient(180deg, #8edcff 0%, #dff7ff 52%, #64bf68 53% 100%);
 }
 
 html,
 body {
-  min-height: 100%;
+  width: 100%;
+  height: 100%;
 }
 
 body {
   margin: 0;
-  overflow-x: hidden;
+  overflow: hidden;
   color: var(--ink);
   background:
     linear-gradient(180deg, #fffaf0 0%, var(--cream) 54%, #e8f9df 100%);
@@ -39,20 +45,21 @@ button {
 }
 
 .game-shell {
-  width: min(1320px, calc(100% - 28px));
-  min-height: 100vh;
+  width: calc(100% - 28px);
+  height: 100vh;
   margin: 0 auto;
-  padding: 16px 0 28px;
+  padding: 14px 0;
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 18px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
 }
 
 .top-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 h1,
@@ -91,7 +98,7 @@ h1 {
 .mode-button,
 .reset-button,
 .replay-button {
-  min-height: 52px;
+  min-height: 46px;
   border: 3px solid var(--ink);
   color: var(--ink);
   background: var(--paper);
@@ -158,7 +165,7 @@ h1 {
 
 .progress {
   min-width: 118px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 3px solid var(--ink);
   border-radius: 999px;
   background: var(--paper);
@@ -181,9 +188,9 @@ h1 {
 }
 
 .reset-button {
-  width: 64px;
+  width: 56px;
   border-radius: 50%;
-  font-size: 34px;
+  font-size: 30px;
   line-height: 1;
 }
 
@@ -195,18 +202,20 @@ h1 {
 
 .game-layout {
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-columns: 190px minmax(0, 1fr);
   align-items: start;
   gap: 18px;
+  overflow: hidden;
 }
 
 .image-library {
   min-width: 0;
-  position: sticky;
-  top: 12px;
-  max-height: calc(100vh - 28px);
+  min-height: 0;
+  height: 100%;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   overflow: hidden;
 }
@@ -225,6 +234,7 @@ h1 {
 
 .image-list {
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-columns: 1fr;
   align-content: start;
@@ -301,14 +311,21 @@ h1 {
 }
 
 .play-area {
+  min-width: 0;
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(440px, 1fr) minmax(230px, 350px);
+  grid-template-columns: var(--board-width) var(--tray-width);
   align-items: start;
   gap: 24px;
+  justify-content: start;
+  width: calc(var(--board-width) + var(--tray-width) + 24px);
+  margin-left: var(--play-offset);
+  overflow: visible;
 }
 
 .board-wrap {
   min-width: 0;
+  min-height: 0;
   display: grid;
   justify-items: center;
   align-items: start;
@@ -316,8 +333,9 @@ h1 {
 
 .board {
   position: relative;
-  width: min(100%, 860px);
-  aspect-ratio: var(--puzzle-ratio);
+  width: var(--board-width);
+  height: var(--board-height);
+  aspect-ratio: auto;
   overflow: hidden;
   border: 8px solid var(--paper);
   border-radius: 24px;
@@ -366,13 +384,14 @@ h1 {
 .tray {
   display: grid;
   grid-template-columns: repeat(var(--tray-columns), var(--piece-width));
+  grid-template-rows: repeat(var(--grid-size), var(--piece-height));
   justify-content: center;
   align-content: start;
-  gap: 12px;
-  max-height: calc(100vh - 160px);
-  overflow: auto;
-  padding: 2px 6px 14px;
-  scrollbar-gutter: stable both-edges;
+  gap: 0;
+  width: var(--tray-width);
+  height: var(--tray-height);
+  overflow: visible;
+  padding: 0;
 }
 
 .piece {

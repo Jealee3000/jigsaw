@@ -93,7 +93,7 @@ async function uploadTestImage(page, fileName, fill, accent, width = 600, height
 
 async function assertPuzzleAspect(page, expectedRatio) {
   const ratios = await page.evaluate(() => {
-    const board = document.querySelector('.board').getBoundingClientRect();
+    const board = document.querySelector('.slot-layer').getBoundingClientRect();
     const piece = document.querySelector('.piece').getBoundingClientRect();
     return {
       board: board.width / board.height,
@@ -108,29 +108,56 @@ async function assertPuzzleAspect(page, expectedRatio) {
 async function assertDesktopPuzzleLayout(page) {
   const layout = await page.evaluate(() => {
     const library = document.querySelector('.image-library').getBoundingClientRect();
+    const imageList = document.querySelector('.image-list');
     const board = document.querySelector('.board').getBoundingClientRect();
+    const slotLayer = document.querySelector('.slot-layer').getBoundingClientRect();
     const tray = document.querySelector('.tray').getBoundingClientRect();
     const slot = document.querySelector('.slot').getBoundingClientRect();
     const piece = document.querySelector('#tray > .piece').getBoundingClientRect();
+    const trayStyle = getComputedStyle(document.querySelector('.tray'));
+    const imageListStyle = getComputedStyle(imageList);
 
     return {
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      documentWidth: document.documentElement.scrollWidth,
+      documentHeight: document.documentElement.scrollHeight,
       libraryRight: library.right,
       boardLeft: board.left,
       boardRight: board.right,
       trayLeft: tray.left,
       boardWidth: board.width,
+      slotLayerWidth: slotLayer.width,
+      slotLayerHeight: slotLayer.height,
+      trayWidth: tray.width,
+      trayHeight: tray.height,
       slotWidth: slot.width,
       slotHeight: slot.height,
       pieceWidth: piece.width,
       pieceHeight: piece.height,
       boardCenterDelta: Math.abs((board.left + board.width / 2) - (window.innerWidth / 2)),
+      imageListCanScroll: imageList.scrollHeight > imageList.clientHeight,
+      imageListOverflowY: imageListStyle.overflowY,
+      trayOverflowX: trayStyle.overflowX,
+      trayOverflowY: trayStyle.overflowY,
+      trayCanScrollX: document.querySelector('.tray').scrollWidth > document.querySelector('.tray').clientWidth,
+      trayCanScrollY: document.querySelector('.tray').scrollHeight > document.querySelector('.tray').clientHeight,
     };
   });
 
+  assert.ok(layout.documentWidth <= layout.viewportWidth + 1, `page horizontal scroll: ${JSON.stringify(layout)}`);
+  assert.ok(layout.documentHeight <= layout.viewportHeight + 1, `page vertical scroll: ${JSON.stringify(layout)}`);
   assert.ok(layout.libraryRight < layout.boardLeft, `library should be left of board: ${JSON.stringify(layout)}`);
   assert.ok(layout.boardRight < layout.trayLeft, `tray should be right of board: ${JSON.stringify(layout)}`);
-  assert.ok(layout.boardWidth >= 620, `board should be larger: ${layout.boardWidth}`);
+  assert.ok(layout.boardWidth >= 400, `board should remain usable: ${layout.boardWidth}`);
   assert.ok(layout.boardCenterDelta < 110, `board should be near center: ${layout.boardCenterDelta}`);
+  assert.ok(layout.imageListCanScroll, `image list should scroll: ${JSON.stringify(layout)}`);
+  assert.equal(layout.imageListOverflowY, 'auto');
+  assert.notEqual(layout.trayOverflowY, 'auto');
+  assert.equal(layout.trayCanScrollX, false);
+  assert.equal(layout.trayCanScrollY, false);
+  assert.ok(Math.abs(layout.slotLayerWidth - layout.trayWidth) <= 3, `tray width ${layout.trayWidth} vs slot layer ${layout.slotLayerWidth}`);
+  assert.ok(Math.abs(layout.slotLayerHeight - layout.trayHeight) <= 3, `tray height ${layout.trayHeight} vs slot layer ${layout.slotLayerHeight}`);
   assert.ok(Math.abs(layout.slotWidth - layout.pieceWidth) <= 3, `piece width ${layout.pieceWidth} vs slot ${layout.slotWidth}`);
   assert.ok(Math.abs(layout.slotHeight - layout.pieceHeight) <= 3, `piece height ${layout.pieceHeight} vs slot ${layout.slotHeight}`);
 }
@@ -275,7 +302,7 @@ async function verifyMobile(page) {
 
   assert.ok(layout.bodyOverflow <= 1, `horizontal overflow ${layout.bodyOverflow}`);
   assert.equal(layout.trayColumns, 4);
-  assert.ok(layout.boardWidth > 300, `board too small: ${layout.boardWidth}`);
+  assert.ok(layout.boardWidth > 220, `board too small: ${layout.boardWidth}`);
   assert.ok(layout.minPieceWidth > 70, `piece too narrow: ${layout.minPieceWidth}`);
   assert.ok(layout.minPieceHeight > 70, `piece too short: ${layout.minPieceHeight}`);
 

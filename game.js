@@ -32,6 +32,7 @@
   let imageLoadToken = 0;
   let activeDrag = null;
   let resizeObserver = null;
+  let puzzleRatio = 600 / 420;
   const modeState = {
     guide: true,
     correction: true,
@@ -101,7 +102,9 @@
       return;
     }
 
+    puzzleRatio = width / height;
     root.style.setProperty('--puzzle-ratio', `${width} / ${height}`);
+    syncLayoutSize();
   }
 
   function loadImageSize(url) {
@@ -237,7 +240,57 @@
 
   function setGridVariables() {
     root.style.setProperty('--grid-size', gridSize);
-    root.style.setProperty('--tray-columns', gridSize === 4 ? 4 : gridSize);
+    root.style.setProperty('--tray-columns', gridSize);
+  }
+
+  function getPixels(value) {
+    return Number.parseFloat(value) || 0;
+  }
+
+  function syncLayoutSize() {
+    const shell = document.querySelector('.game-shell');
+    const gameLayout = document.querySelector('.game-layout');
+    const imageLibraryNode = document.querySelector('.image-library');
+    const playArea = document.querySelector('.play-area');
+
+    if (!shell || !gameLayout || !imageLibraryNode || !playArea) {
+      return;
+    }
+
+    const shellRect = shell.getBoundingClientRect();
+    const layoutRect = gameLayout.getBoundingClientRect();
+    const libraryRect = imageLibraryNode.getBoundingClientRect();
+    const layoutStyle = getComputedStyle(gameLayout);
+    const playStyle = getComputedStyle(playArea);
+    const boardStyle = getComputedStyle(board);
+    const layoutGap = getPixels(layoutStyle.columnGap);
+    const playGap = getPixels(playStyle.columnGap);
+    const boardBorderX = getPixels(boardStyle.borderLeftWidth) + getPixels(boardStyle.borderRightWidth);
+    const boardBorderY = getPixels(boardStyle.borderTopWidth) + getPixels(boardStyle.borderBottomWidth);
+    const playStart = layoutRect.left + libraryRect.width + layoutGap;
+    const shellCenter = shellRect.left + shellRect.width / 2;
+    const verticalRoom = window.innerHeight - layoutRect.top - 14;
+    const maxOuterHeight = Math.max(180, verticalRoom);
+    const contentRatio = Math.max(0.2, puzzleRatio);
+    const widthFromHeight = (maxOuterHeight - boardBorderY) * contentRatio + boardBorderX;
+    const maxByLeftSpace = Math.max(240, 2 * (shellCenter - playStart));
+    const maxByRightTray = Math.max(240, (shellRect.right - shellCenter - playGap + boardBorderX) / 1.5);
+    const boardOuterWidth = Math.max(240, Math.floor(Math.min(maxByLeftSpace, maxByRightTray, widthFromHeight)));
+    const boardContentWidth = Math.max(160, boardOuterWidth - boardBorderX);
+    const boardContentHeight = Math.max(120, Math.floor(boardContentWidth / contentRatio));
+    const boardOuterHeight = boardContentHeight + boardBorderY;
+    const desiredBoardLeft = shellCenter - boardOuterWidth / 2;
+    const playOffset = Math.max(0, desiredBoardLeft - playStart);
+    const pieceWidth = boardContentWidth / gridSize;
+    const pieceHeight = boardContentHeight / gridSize;
+
+    root.style.setProperty('--board-width', `${boardOuterWidth}px`);
+    root.style.setProperty('--board-height', `${boardOuterHeight}px`);
+    root.style.setProperty('--play-offset', `${playOffset}px`);
+    root.style.setProperty('--tray-width', `${boardContentWidth}px`);
+    root.style.setProperty('--tray-height', `${boardContentHeight}px`);
+    root.style.setProperty('--piece-width', `${pieceWidth}px`);
+    root.style.setProperty('--piece-height', `${pieceHeight}px`);
   }
 
   function syncLoosePieceSize() {
@@ -251,13 +304,10 @@
       return;
     }
 
-    const trayWidth = tray.clientWidth || rect.width;
-    const gap = 12;
-    const columns = Math.max(1, Math.floor((trayWidth + gap) / (rect.width + gap)));
-
     root.style.setProperty('--piece-width', `${rect.width}px`);
     root.style.setProperty('--piece-height', `${rect.height}px`);
-    root.style.setProperty('--tray-columns', columns);
+    root.style.setProperty('--tray-width', `${rect.width * gridSize}px`);
+    root.style.setProperty('--tray-height', `${rect.height * gridSize}px`);
   }
 
   function parsePieceId(pieceId) {
@@ -336,7 +386,10 @@
       tray.appendChild(createPiece(pieceId));
     }
 
-    requestAnimationFrame(syncLoosePieceSize);
+    requestAnimationFrame(() => {
+      syncLayoutSize();
+      syncLoosePieceSize();
+    });
   }
 
   function getSnapThreshold(slotRect) {
@@ -801,6 +854,7 @@
   } else {
     window.addEventListener('resize', syncLoosePieceSize);
   }
+  window.addEventListener('resize', syncLayoutSize);
 
   setPuzzleImage(currentImageUrl);
   setPuzzleRatio(600, 420);
