@@ -122,6 +122,13 @@ async function verifyPlayModes(page) {
   assert.equal(wrongPlaced.parentId, 'board');
   assert.equal(wrongPlaced.progress, '1 / 4');
 
+  for (const pieceId of ['piece-0-1', 'piece-1-0', 'piece-1-1']) {
+    await dragPieceToSlot(page, pieceId);
+  }
+
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
+  assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
+
   await page.locator('.mode-button[data-mode="correction"]').click();
   await page.locator('.mode-button[data-mode="guide"]').click();
   await page.locator('.mode-button[data-mode="labels"]').click();

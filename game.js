@@ -386,8 +386,19 @@
     progress.setAttribute('aria-label', `完成 ${gameState.placedCount} / ${pieceIds.length}`);
   }
 
+  function isPuzzleSolved() {
+    if (modeState.correction) {
+      return isComplete(gameState);
+    }
+
+    return pieceIds.every((pieceId) => {
+      const piece = gameState.pieces[pieceId];
+      return piece?.placed === true && piece.currentTargetId === piece.targetId;
+    });
+  }
+
   function showCelebrationIfComplete() {
-    if (isComplete(gameState)) {
+    if (isPuzzleSolved()) {
       celebration.hidden = false;
       window.setTimeout(() => replayButton.focus(), 0);
       return true;
