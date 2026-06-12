@@ -8,10 +8,10 @@ const screenshotsDir = path.join(__dirname, 'artifacts');
 
 fs.mkdirSync(screenshotsDir, { recursive: true });
 
-async function dragPieceToSlot(page, pieceId) {
-  const coords = await page.evaluate((id) => {
+async function dragPieceToSlot(page, pieceId, targetId = pieceId) {
+  const coords = await page.evaluate(({ pieceId: id, targetId: target }) => {
     const piece = document.querySelector(`.piece[data-piece-id="${id}"]`);
-    const slot = document.querySelector(`.slot[data-target-id="${id}"]`);
+    const slot = document.querySelector(`.slot[data-target-id="${target}"]`);
     if (!piece || !slot) return null;
 
     const pieceRect = piece.getBoundingClientRect();
@@ -26,37 +26,9 @@ async function dragPieceToSlot(page, pieceId) {
         y: slotRect.top + slotRect.height / 2,
       },
     };
-  }, pieceId);
+  }, { pieceId, targetId });
 
-  assert.ok(coords, `missing piece or slot for ${pieceId}`);
-  await page.mouse.move(coords.from.x, coords.from.y);
-  await page.mouse.down();
-  await page.mouse.move(coords.to.x, coords.to.y, { steps: 10 });
-  await page.mouse.up();
-  await page.waitForTimeout(80);
-}
-
-async function dragPieceToWrongSlot(page, pieceId, wrongTargetId) {
-  const coords = await page.evaluate(({ pieceId: id, wrongTargetId: targetId }) => {
-    const piece = document.querySelector(`.piece[data-piece-id="${id}"]`);
-    const slot = document.querySelector(`.slot[data-target-id="${targetId}"]`);
-    if (!piece || !slot) return null;
-
-    const pieceRect = piece.getBoundingClientRect();
-    const slotRect = slot.getBoundingClientRect();
-    return {
-      from: {
-        x: pieceRect.left + pieceRect.width / 2,
-        y: pieceRect.top + pieceRect.height / 2,
-      },
-      to: {
-        x: slotRect.left + slotRect.width / 2,
-        y: slotRect.top + slotRect.height / 2,
-      },
-    };
-  }, { pieceId, wrongTargetId });
-
-  assert.ok(coords, `missing piece ${pieceId} or wrong slot ${wrongTargetId}`);
+  assert.ok(coords, `missing piece ${pieceId} or slot ${targetId}`);
   await page.mouse.move(coords.from.x, coords.from.y);
   await page.mouse.down();
   await page.mouse.move(coords.to.x, coords.to.y, { steps: 10 });
@@ -70,31 +42,56 @@ async function trayOrder(page) {
   ));
 }
 
+async function assertGrid(page, size) {
+  assert.equal(await page.locator('.piece').count(), size * size);
+  assert.equal(await page.locator('.slot').count(), size * size);
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), `完成 0 / ${size * size}`);
+}
+
+async function uploadTestImage(page) {
+  const uploadPath = path.join(screenshotsDir, 'upload-test.svg');
+  fs.writeFileSync(
+    uploadPath,
+    '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="420"><rect width="600" height="420" fill="#ffcc00"/><circle cx="300" cy="210" r="100" fill="#0077cc"/></svg>',
+  );
+
+  await page.locator('#image-input').setInputFiles(uploadPath);
+  await page.waitForTimeout(150);
+  const puzzleImage = await page.evaluate(() => (
+    getComputedStyle(document.documentElement).getPropertyValue('--puzzle-image')
+  ));
+  assert.match(puzzleImage, /blob:/);
+}
+
 async function verifyDesktop(page) {
   await page.setViewportSize({ width: 1280, height: 820 });
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
 
-  assert.equal(await page.locator('.piece').count(), 4);
-  assert.equal(await page.locator('.slot').count(), 4);
-  assert.equal(await page.locator('.star.filled').count(), 0);
-  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '\u5b8c\u6210 0 / 4');
+  await assertGrid(page, 2);
+  await uploadTestImage(page);
 
-  const initialOrder = ['sky-puppy', 'sun-house', 'grass-puppy', 'garden-toys'];
-  assert.deepEqual(await trayOrder(page), initialOrder);
-  await dragPieceToWrongSlot(page, 'sky-puppy', 'sun-house');
-  assert.deepEqual(await trayOrder(page), initialOrder);
-  assert.equal(await page.locator('.star.filled').count(), 0);
+  await page.locator('.grid-button[data-grid-size="3"]').click();
+  await assertGrid(page, 3);
+  await page.locator('.grid-button[data-grid-size="4"]').click();
+  await assertGrid(page, 4);
 
-  for (const pieceId of ['sky-puppy', 'sun-house', 'grass-puppy', 'garden-toys']) {
+  await page.locator('.grid-button[data-grid-size="2"]').click();
+  await assertGrid(page, 2);
+
+  const initialOrder = ['piece-0-0', 'piece-0-1', 'piece-1-0', 'piece-1-1'];
+  assert.deepEqual(await trayOrder(page), initialOrder);
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');
+  assert.deepEqual(await trayOrder(page), initialOrder);
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 0 / 4');
+
+  for (const pieceId of initialOrder) {
     await dragPieceToSlot(page, pieceId);
-    const placed = await page.locator(`.piece[data-piece-id="${pieceId}"]`).evaluate((piece) => {
-      return {
-        parentId: piece.parentElement.id,
-        placed: piece.classList.contains('placed'),
-        tabIndex: piece.tabIndex,
-        ariaDisabled: piece.getAttribute('aria-disabled'),
-      };
-    });
+    const placed = await page.locator(`.piece[data-piece-id="${pieceId}"]`).evaluate((piece) => ({
+      parentId: piece.parentElement.id,
+      placed: piece.classList.contains('placed'),
+      tabIndex: piece.tabIndex,
+      ariaDisabled: piece.getAttribute('aria-disabled'),
+    }));
 
     assert.equal(placed.parentId, 'board');
     assert.equal(placed.placed, true);
@@ -102,8 +99,8 @@ async function verifyDesktop(page) {
     assert.equal(placed.ariaDisabled, 'true');
   }
 
-  assert.equal(await page.locator('.star.filled').count(), 4);
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), false);
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
   await page.screenshot({ path: path.join(screenshotsDir, 'desktop-complete.png'), fullPage: true });
 
   await page.locator('#replay-button').click();
@@ -111,28 +108,27 @@ async function verifyDesktop(page) {
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
   assert.equal(await page.locator('#tray > .piece').count(), 4);
   assert.deepEqual(await trayOrder(page), initialOrder);
-  assert.equal(await page.locator('.star.filled').count(), 0);
-  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '\u5b8c\u6210 0 / 4');
 
-  await page.locator('.piece[data-piece-id="sky-puppy"]').press('Enter');
-  assert.equal(await page.locator('.star.filled').count(), 1);
-  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '\u5b8c\u6210 1 / 4');
-
-  await page.locator('.piece[data-piece-id="sun-house"]').click();
-  assert.equal(await page.locator('.star.filled').count(), 2);
-
-  await page.locator('.piece[data-piece-id="grass-puppy"]').press('Space');
-  assert.equal(await page.locator('.star.filled').count(), 3);
-
-  await page.locator('.piece[data-piece-id="garden-toys"]').click();
+  await page.locator('.piece[data-piece-id="piece-0-0"]').press('Enter');
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 1 / 4');
+  await page.locator('.piece[data-piece-id="piece-0-1"]').click();
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 2 / 4');
+  await page.locator('.piece[data-piece-id="piece-1-0"]').press('Space');
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 3 / 4');
+  await page.locator('.piece[data-piece-id="piece-1-1"]').click();
   await page.waitForTimeout(80);
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), false);
-  assert.equal(await page.locator('.star.filled').count(), 4);
+
+  await page.locator('#replay-button').click();
+  await page.locator('.grid-button[data-grid-size="3"]').click();
+  await dragPieceToSlot(page, 'piece-2-2');
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 1 / 9');
 }
 
 async function verifyMobile(page) {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  await page.locator('.grid-button[data-grid-size="4"]').click();
 
   const layout = await page.evaluate(() => {
     const tray = document.querySelector('.tray');
@@ -152,10 +148,10 @@ async function verifyMobile(page) {
   });
 
   assert.ok(layout.bodyOverflow <= 1, `horizontal overflow ${layout.bodyOverflow}`);
-  assert.equal(layout.trayColumns, 2);
+  assert.equal(layout.trayColumns, 4);
   assert.ok(layout.boardWidth > 300, `board too small: ${layout.boardWidth}`);
-  assert.ok(layout.minPieceWidth > 130, `piece too narrow: ${layout.minPieceWidth}`);
-  assert.ok(layout.minPieceHeight > 85, `piece too short: ${layout.minPieceHeight}`);
+  assert.ok(layout.minPieceWidth > 70, `piece too narrow: ${layout.minPieceWidth}`);
+  assert.ok(layout.minPieceHeight > 70, `piece too short: ${layout.minPieceHeight}`);
 
   await page.screenshot({ path: path.join(screenshotsDir, 'mobile-start.png'), fullPage: true });
 }

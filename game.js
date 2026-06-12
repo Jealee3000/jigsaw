@@ -148,6 +148,10 @@
   }
 
   function renderPuzzle() {
+    for (const piece of Array.from(board.querySelectorAll('.piece'))) {
+      piece.remove();
+    }
+
     slotLayer.replaceChildren();
     tray.replaceChildren();
 
