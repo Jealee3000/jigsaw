@@ -19,15 +19,23 @@
   const imageList = document.querySelector('#image-list');
   const statusMessage = document.querySelector('#status-message');
   const gridButtons = Array.from(document.querySelectorAll('.grid-button'));
+  const modeButtons = Array.from(document.querySelectorAll('.mode-button'));
   const suppressedClicks = new WeakSet();
   const fallbackImageUrl = getFallbackImageUrl();
 
   let gridSize = 2;
   let pieceIds = createPieceIds(gridSize);
+  let trayPieceIds = shufflePieceIds(pieceIds);
   let gameState = createGameState(pieceIds);
   let currentImageUrl = fallbackImageUrl;
   let imageLibrary = [];
+  let imageLoadToken = 0;
   let activeDrag = null;
+  const modeState = {
+    guide: true,
+    correction: true,
+    labels: false,
+  };
 
   function getFallbackImageUrl() {
     const svg = `
@@ -87,6 +95,70 @@
     root.style.setProperty('--puzzle-image', `url("${url}")`);
   }
 
+  function setPuzzleRatio(width, height) {
+    if (!width || !height) {
+      return;
+    }
+
+    root.style.setProperty('--puzzle-ratio', `${width} / ${height}`);
+  }
+
+  function loadImageSize(url) {
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve({
+        width: image.naturalWidth || 600,
+        height: image.naturalHeight || 420,
+      });
+      image.onerror = () => resolve({ width: 600, height: 420 });
+      image.src = url;
+    });
+  }
+
+  async function setCurrentImage(url) {
+    const token = imageLoadToken + 1;
+    imageLoadToken = token;
+    currentImageUrl = url;
+    setPuzzleImage(url);
+
+    const size = await loadImageSize(url);
+    if (token === imageLoadToken) {
+      setPuzzleRatio(size.width, size.height);
+    }
+  }
+
+  function hasSameOrder(first, second) {
+    return first.length === second.length
+      && first.every((item, index) => item === second[index]);
+  }
+
+  function shufflePieceIds(ids) {
+    const shuffled = [...ids];
+
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+    }
+
+    if (shuffled.length > 1 && hasSameOrder(shuffled, ids)) {
+      shuffled.push(shuffled.shift());
+    }
+
+    return shuffled;
+  }
+
+  function updateModeControls() {
+    board.classList.toggle('hide-guide', !modeState.guide);
+    root.classList.toggle('show-labels', modeState.labels);
+    root.classList.toggle('free-placement', !modeState.correction);
+
+    for (const button of modeButtons) {
+      const isActive = modeState[button.dataset.mode];
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-pressed', String(isActive));
+    }
+  }
+
   function renderImageLibrary() {
     imageList.replaceChildren();
 
@@ -122,13 +194,12 @@
     }
   }
 
-  function selectLibraryImage(image, options = {}) {
+  async function selectLibraryImage(image, options = {}) {
     if (!image) {
       return;
     }
 
-    currentImageUrl = image.url;
-    setPuzzleImage(currentImageUrl);
+    await setCurrentImage(image.url);
     renderImageLibrary();
     resetGame({ preserveFocus: true });
 
@@ -150,7 +221,7 @@
       renderImageLibrary();
 
       if (imageLibrary.length > 0 && currentImageUrl === fallbackImageUrl) {
-        selectLibraryImage(imageLibrary[0], { silent: true });
+        await selectLibraryImage(imageLibrary[0], { silent: true });
         setStatus(`已加载 ${imageLibrary.length} 张图片`);
         return;
       }
@@ -234,8 +305,13 @@
     slotLayer.replaceChildren();
     tray.replaceChildren();
 
+    trayPieceIds = shufflePieceIds(pieceIds);
+
     for (const pieceId of pieceIds) {
       slotLayer.appendChild(createSlot(pieceId));
+    }
+
+    for (const pieceId of trayPieceIds) {
       tray.appendChild(createPiece(pieceId));
     }
   }
@@ -280,10 +356,10 @@
   }
 
   function insertPieceInOriginalOrder(piece) {
-    const order = pieceIds.indexOf(piece.dataset.pieceId);
+    const order = trayPieceIds.indexOf(piece.dataset.pieceId);
     const nextPiece = Array.from(tray.children).find((child) => (
       child.classList.contains('piece')
-      && pieceIds.indexOf(child.dataset.pieceId) > order
+      && trayPieceIds.indexOf(child.dataset.pieceId) > order
     ));
 
     tray.insertBefore(piece, nextPiece || null);
@@ -320,6 +396,36 @@
     return false;
   }
 
+  function markPieceLoose(pieceId) {
+    const piece = gameState.pieces[pieceId];
+
+    if (!piece) {
+      return;
+    }
+
+    if (piece.placed) {
+      gameState.placedCount = Math.max(0, gameState.placedCount - 1);
+    }
+
+    piece.placed = false;
+    piece.currentTargetId = null;
+  }
+
+  function markPiecePlaced(pieceId, targetId) {
+    const piece = gameState.pieces[pieceId];
+
+    if (!piece) {
+      return;
+    }
+
+    if (!piece.placed) {
+      gameState.placedCount += 1;
+    }
+
+    piece.placed = true;
+    piece.currentTargetId = targetId;
+  }
+
   function placePiece(piece, slot) {
     piece.classList.remove('dragging');
     piece.classList.add('placed');
@@ -331,8 +437,9 @@
     piece.style.height = `${slot.offsetHeight}px`;
     piece.style.transform = '';
     piece.style.zIndex = '';
-    piece.tabIndex = -1;
-    piece.setAttribute('aria-disabled', 'true');
+    piece.dataset.currentTargetId = slot.dataset.targetId;
+    piece.tabIndex = modeState.correction ? -1 : 0;
+    piece.setAttribute('aria-disabled', String(modeState.correction));
 
     board.appendChild(piece);
 
@@ -351,6 +458,7 @@
     piece.style.removeProperty('--drag-height');
     piece.style.transform = '';
     piece.style.zIndex = '';
+    piece.removeAttribute('data-current-target-id');
     piece.removeAttribute('aria-disabled');
     piece.removeAttribute('tabindex');
     insertPieceInOriginalOrder(piece);
@@ -386,7 +494,7 @@
       return;
     }
 
-    if (gameState.pieces[pieceId]?.placed) {
+    if (gameState.pieces[pieceId]?.placed && modeState.correction) {
       return;
     }
 
@@ -394,6 +502,7 @@
     activeDrag = {
       piece,
       pieceId,
+      wasPlaced: Boolean(gameState.pieces[pieceId]?.placed),
       pointerId: event.pointerId,
       width: rect.width,
       height: rect.height,
@@ -403,6 +512,7 @@
     };
 
     event.preventDefault();
+    markPieceLoose(pieceId);
     piece.setPointerCapture(event.pointerId);
     piece.style.setProperty('--drag-width', `${rect.width}px`);
     piece.style.setProperty('--drag-height', `${rect.height}px`);
@@ -431,7 +541,7 @@
     const drag = activeDrag;
     const point = { x: event.clientX, y: event.clientY };
     const closestSlot = getClosestSlot(point);
-    const nextState = closestSlot
+    const nextState = closestSlot && modeState.correction
       ? tryPlacePiece(gameState, {
         pieceId: drag.pieceId,
         targetId: closestSlot.targetId,
@@ -447,6 +557,18 @@
 
     if (drag.didMove) {
       suppressedClicks.add(drag.piece);
+    }
+
+    if (
+      !modeState.correction
+      && closestSlot
+      && closestSlot.distance <= closestSlot.snapThreshold
+    ) {
+      markPiecePlaced(drag.pieceId, closestSlot.targetId);
+      placePiece(drag.piece, closestSlot.slot);
+      updateProgress();
+      showCelebrationIfComplete();
+      return;
     }
 
     if (nextState.pieces[drag.pieceId]?.placed) {
@@ -542,6 +664,20 @@
     }
   }
 
+  function onModeButtonClick(event) {
+    const mode = event.currentTarget.dataset.mode;
+    modeState[mode] = !modeState[mode];
+    updateModeControls();
+
+    if (mode === 'correction') {
+      resetGame({ preserveFocus: true });
+      setStatus(modeState.correction ? '已开启纠错' : '已关闭纠错，可以放错位置');
+      return;
+    }
+
+    setStatus(modeState[mode] ? `已开启${event.currentTarget.textContent}` : `已隐藏${event.currentTarget.textContent}`);
+  }
+
   function resetGame(options = {}) {
     gameState = resetGameState(pieceIds);
     activeDrag = null;
@@ -563,6 +699,7 @@
     activeDrag = null;
     gridSize = size;
     pieceIds = createPieceIds(gridSize);
+    trayPieceIds = shufflePieceIds(pieceIds);
     setGridVariables();
     updateGridButtons();
     resetGame({ preserveFocus: true });
@@ -603,7 +740,7 @@
 
       imageLibrary = Array.isArray(result.images) ? result.images : [];
       renderImageLibrary();
-      selectLibraryImage(result.image, { silent: true });
+      await selectLibraryImage(result.image, { silent: true });
       setStatus(`已上传 ${result.image.name}`);
     } catch (error) {
       setStatus(error.message || '上传失败，请换一张图片');
@@ -616,12 +753,18 @@
     button.addEventListener('click', onGridButtonClick);
   }
 
+  for (const button of modeButtons) {
+    button.addEventListener('click', onModeButtonClick);
+  }
+
   imageInput.addEventListener('change', onImageChange);
   resetButton.addEventListener('click', () => resetGame());
   replayButton.addEventListener('click', () => resetGame());
 
   setPuzzleImage(currentImageUrl);
+  setPuzzleRatio(600, 420);
   setGridVariables();
+  updateModeControls();
   renderPuzzle();
   updateProgress();
   loadImageLibrary();

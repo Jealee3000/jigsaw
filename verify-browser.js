@@ -67,11 +67,11 @@ async function currentPuzzleImage(page) {
   ));
 }
 
-async function uploadTestImage(page, fileName, fill, accent) {
+async function uploadTestImage(page, fileName, fill, accent, width = 600, height = 420) {
   const uploadPath = path.join(screenshotsDir, fileName);
   fs.writeFileSync(
     uploadPath,
-    `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="420"><rect width="600" height="420" fill="${fill}"/><circle cx="300" cy="210" r="100" fill="${accent}"/></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="${fill}"/><circle cx="${width / 2}" cy="${height / 2}" r="${Math.min(width, height) / 4}" fill="${accent}"/></svg>`,
   );
 
   await page.locator('#image-input').setInputFiles(uploadPath);
@@ -82,6 +82,50 @@ async function uploadTestImage(page, fileName, fill, accent) {
   const puzzleImage = await currentPuzzleImage(page);
   assert.match(puzzleImage, new RegExp(`/images/${fileName}`));
   return card;
+}
+
+async function assertPuzzleAspect(page, expectedRatio) {
+  const ratios = await page.evaluate(() => {
+    const board = document.querySelector('.board').getBoundingClientRect();
+    const piece = document.querySelector('.piece').getBoundingClientRect();
+    return {
+      board: board.width / board.height,
+      piece: piece.width / piece.height,
+    };
+  });
+
+  assert.ok(Math.abs(ratios.board - expectedRatio) < 0.03, `board ratio ${ratios.board}`);
+  assert.ok(Math.abs(ratios.piece - expectedRatio) < 0.03, `piece ratio ${ratios.piece}`);
+}
+
+async function verifyPlayModes(page) {
+  await uploadTestImage(page, 'browser-test-wide.svg', '#8edcff', '#ef6f63', 500, 300);
+  await assertPuzzleAspect(page, 500 / 300);
+
+  assert.equal(await page.locator('.piece-label').first().isVisible(), false);
+
+  await page.locator('.mode-button[data-mode="labels"]').click();
+  assert.equal(await page.locator('.piece-label').first().isVisible(), true);
+
+  await page.locator('.mode-button[data-mode="guide"]').click();
+  assert.equal(await page.locator('#board').evaluate((node) => node.classList.contains('hide-guide')), true);
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');
+  const wrongPlaced = await page.locator('.piece[data-piece-id="piece-0-0"]').evaluate((piece) => ({
+    placed: piece.classList.contains('placed'),
+    parentId: piece.parentElement.id,
+    progress: document.querySelector('.progress').textContent,
+  }));
+
+  assert.equal(wrongPlaced.placed, true);
+  assert.equal(wrongPlaced.parentId, 'board');
+  assert.equal(wrongPlaced.progress, '1 / 4');
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="guide"]').click();
+  await page.locator('.mode-button[data-mode="labels"]').click();
+  await assertGrid(page, 2);
 }
 
 async function verifyImageLibrary(page) {
@@ -106,6 +150,7 @@ async function verifyDesktop(page) {
 
   await assertGrid(page, 2);
   await verifyImageLibrary(page);
+  await verifyPlayModes(page);
 
   await page.locator('.grid-button[data-grid-size="3"]').click();
   await assertGrid(page, 3);
@@ -115,13 +160,13 @@ async function verifyDesktop(page) {
   await page.locator('.grid-button[data-grid-size="2"]').click();
   await assertGrid(page, 2);
 
-  const initialOrder = ['piece-0-0', 'piece-0-1', 'piece-1-0', 'piece-1-1'];
-  assert.deepEqual(await trayOrder(page), initialOrder);
+  const naturalOrder = ['piece-0-0', 'piece-0-1', 'piece-1-0', 'piece-1-1'];
+  const initialOrder = await trayOrder(page);
+  assert.notDeepEqual(initialOrder, naturalOrder);
   await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');
-  assert.deepEqual(await trayOrder(page), initialOrder);
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 0 / 4');
 
-  for (const pieceId of initialOrder) {
+  for (const pieceId of naturalOrder) {
     await dragPieceToSlot(page, pieceId);
     const placed = await page.locator(`.piece[data-piece-id="${pieceId}"]`).evaluate((piece) => ({
       parentId: piece.parentElement.id,
@@ -144,7 +189,6 @@ async function verifyDesktop(page) {
   await page.waitForTimeout(80);
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
   assert.equal(await page.locator('#tray > .piece').count(), 4);
-  assert.deepEqual(await trayOrder(page), initialOrder);
 
   await page.locator('.piece[data-piece-id="piece-0-0"]').press('Enter');
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 1 / 4');

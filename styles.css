@@ -13,6 +13,7 @@
   --slot-line: rgba(38, 49, 58, .42);
   --grid-size: 2;
   --tray-columns: 2;
+  --puzzle-ratio: 600 / 420;
   --puzzle-image: linear-gradient(180deg, #8edcff 0%, #dff7ff 52%, #64bf68 53% 100%);
 }
 
@@ -85,6 +86,7 @@ h1 {
 
 .file-control,
 .grid-button,
+.mode-button,
 .reset-button,
 .replay-button {
   min-height: 52px;
@@ -98,6 +100,7 @@ h1 {
 
 .file-control:hover,
 .grid-button:hover,
+.mode-button:hover,
 .reset-button:hover,
 .replay-button:hover {
   transform: translateY(-1px);
@@ -106,6 +109,7 @@ h1 {
 
 .file-control:active,
 .grid-button:active,
+.mode-button:active,
 .reset-button:active,
 .replay-button:active {
   transform: translateY(3px);
@@ -133,13 +137,20 @@ h1 {
   gap: 6px;
 }
 
-.grid-button {
+.mode-control {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.grid-button,
+.mode-button {
   min-width: 64px;
   border-radius: 8px;
   font-weight: 800;
 }
 
-.grid-button.active {
+.grid-button.active,
+.mode-button.active {
   background: #fff1a9;
 }
 
@@ -159,6 +170,7 @@ h1 {
 .reset-button:focus-visible,
 .replay-button:focus-visible,
 .grid-button:focus-visible,
+.mode-button:focus-visible,
 .file-control:focus-within,
 .image-card:focus-visible,
 .piece:focus-visible {
@@ -290,7 +302,7 @@ h1 {
 .board {
   position: relative;
   width: min(100%, 760px);
-  aspect-ratio: 600 / 420;
+  aspect-ratio: var(--puzzle-ratio);
   overflow: hidden;
   border: 8px solid var(--paper);
   border-radius: 24px;
@@ -309,6 +321,11 @@ h1 {
   background-size: cover;
   background-position: center;
   opacity: .32;
+  transition: opacity .18s ease;
+}
+
+.board.hide-guide .guide-image {
+  opacity: 0;
 }
 
 .slot-layer {
@@ -343,7 +360,7 @@ h1 {
   display: block;
   width: 100%;
   min-width: 0;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: var(--puzzle-ratio);
   overflow: hidden;
   border: 5px solid var(--paper);
   border-radius: 18px;
@@ -370,6 +387,7 @@ h1 {
 .piece-label {
   position: absolute;
   z-index: 2;
+  display: none;
   right: 7px;
   left: 7px;
   bottom: 7px;
@@ -387,8 +405,16 @@ h1 {
   white-space: nowrap;
 }
 
-.piece.compact .piece-label {
-  display: none;
+.show-labels .piece-label {
+  display: block;
+}
+
+.show-labels .piece.compact .piece-label {
+  right: 4px;
+  left: 4px;
+  bottom: 4px;
+  padding: 3px 4px;
+  font-size: 11px;
 }
 
 .piece.dragging {
@@ -414,6 +440,11 @@ h1 {
   transition: none;
   cursor: default;
   pointer-events: none;
+}
+
+.free-placement .piece.placed {
+  cursor: grab;
+  pointer-events: auto;
 }
 
 .piece.placed .piece-label {
@@ -524,6 +555,7 @@ h1 {
 
   .file-control,
   .grid-button,
+  .mode-button,
   .image-card {
     min-height: 46px;
   }
@@ -532,7 +564,8 @@ h1 {
     grid-auto-columns: minmax(108px, 128px);
   }
 
-  .grid-button {
+  .grid-button,
+  .mode-button {
     min-width: 58px;
   }
 
