@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>小狗家的院子拼图</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="game-logic.js" defer></script>
+  <script src="game.js" defer></script>
+</head>
+<body>
+  <main class="game-shell" aria-label="小狗家的院子拼图游戏">
+    <header class="top-bar" aria-label="游戏状态">
+      <div class="title-block">
+        <h1>小狗家的院子拼图</h1>
+        <p>把四块拼图放回暖暖的小院子里</p>
+      </div>
+
+      <div class="progress" aria-label="完成进度">
+        <span class="star" data-star="0" aria-hidden="true">★</span>
+        <span class="star" data-star="1" aria-hidden="true">★</span>
+        <span class="star" data-star="2" aria-hidden="true">★</span>
+        <span class="star" data-star="3" aria-hidden="true">★</span>
+      </div>
+
+      <button class="reset-button" id="reset-button" type="button" aria-label="重新开始">
+        <span aria-hidden="true">↻</span>
+      </button>
+    </header>
+
+    <section class="play-area" aria-label="拼图区">
+      <div class="board-wrap">
+        <div class="board" id="board" aria-label="拼图板">
+          <svg class="guide-art" viewBox="0 0 600 420" role="img" aria-label="完成后的阳光小狗院子图">
+            <defs>
+              <linearGradient id="skyGradient" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stop-color="#8edcff"></stop>
+                <stop offset="1" stop-color="#dff7ff"></stop>
+              </linearGradient>
+              <linearGradient id="yardGradient" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0" stop-color="#8ed866"></stop>
+                <stop offset="1" stop-color="#54b86e"></stop>
+              </linearGradient>
+            </defs>
+
+            <rect width="600" height="420" rx="24" fill="url(#skyGradient)"></rect>
+            <g aria-hidden="true">
+              <circle cx="506" cy="78" r="43" fill="#ffd958"></circle>
+              <g stroke="#ffd958" stroke-linecap="round" stroke-width="10">
+                <path d="M506 18 V1"></path>
+                <path d="M506 155 v-17"></path>
+                <path d="M446 78 h-18"></path>
+                <path d="M584 78 h-18"></path>
+                <path d="M463 35 l-13 -13"></path>
+                <path d="M550 121 l13 13"></path>
+                <path d="M550 35 l13 -13"></path>
+                <path d="M463 121 l-13 13"></path>
+              </g>
+            </g>
+
+            <path d="M0 285 C82 249 168 276 246 268 C342 258 408 218 600 242 V420 H0 Z" fill="url(#yardGradient)"></path>
+            <path d="M0 332 C96 306 166 344 252 326 C360 304 448 316 600 292 V420 H0 Z" fill="#5fbd62" opacity=".7"></path>
+
+            <g transform="translate(66 139)">
+              <rect x="2" y="69" width="170" height="122" rx="18" fill="#ffd37a" stroke="#5c4333" stroke-width="9"></rect>
+              <path d="M-15 78 L86 0 L190 78 Z" fill="#ef6f63" stroke="#5c4333" stroke-width="9" stroke-linejoin="round"></path>
+              <rect x="28" y="114" width="44" height="77" rx="14" fill="#66b9e8" stroke="#5c4333" stroke-width="8"></rect>
+              <circle cx="60" cy="153" r="5" fill="#fff7df"></circle>
+              <rect x="102" y="108" width="41" height="35" rx="9" fill="#fff7df" stroke="#5c4333" stroke-width="7"></rect>
+              <path d="M122 108 v35 M102 125 h41" stroke="#5c4333" stroke-width="5"></path>
+            </g>
+
+            <g transform="translate(354 129)">
+              <ellipse cx="73" cy="128" rx="72" ry="56" fill="#f0a25e" stroke="#5c4333" stroke-width="9"></ellipse>
+              <circle cx="68" cy="66" r="56" fill="#ffbd79" stroke="#5c4333" stroke-width="9"></circle>
+              <path d="M26 29 L12 -9 L56 11 Z" fill="#ffbd79" stroke="#5c4333" stroke-width="8" stroke-linejoin="round"></path>
+              <path d="M109 29 L126 -9 L84 11 Z" fill="#ffbd79" stroke="#5c4333" stroke-width="8" stroke-linejoin="round"></path>
+              <circle cx="48" cy="61" r="7" fill="#302820"></circle>
+              <circle cx="88" cy="61" r="7" fill="#302820"></circle>
+              <ellipse cx="69" cy="82" rx="15" ry="10" fill="#5c4333"></ellipse>
+              <path d="M51 99 Q69 114 90 99" fill="none" stroke="#5c4333" stroke-width="7" stroke-linecap="round"></path>
+              <path d="M143 135 Q177 112 190 143" fill="none" stroke="#5c4333" stroke-width="11" stroke-linecap="round"></path>
+              <path d="M54 121 h37" stroke="#fff7df" stroke-width="8" stroke-linecap="round" opacity=".7"></path>
+            </g>
+
+            <g transform="translate(113 284)">
+              <ellipse cx="58" cy="45" rx="58" ry="36" fill="#63b8e8" stroke="#254f73" stroke-width="8"></ellipse>
+              <circle cx="45" cy="30" r="33" fill="#85d2fb" stroke="#254f73" stroke-width="8"></circle>
+              <path d="M21 14 L8 -9 L39 4 Z" fill="#85d2fb" stroke="#254f73" stroke-width="7" stroke-linejoin="round"></path>
+              <circle cx="33" cy="29" r="5" fill="#1d405c"></circle>
+              <circle cx="56" cy="29" r="5" fill="#1d405c"></circle>
+              <path d="M36 44 Q46 52 59 44" fill="none" stroke="#1d405c" stroke-width="5" stroke-linecap="round"></path>
+              <path d="M111 43 Q142 24 152 52" fill="none" stroke="#254f73" stroke-width="9" stroke-linecap="round"></path>
+            </g>
+
+            <g transform="translate(416 300)">
+              <circle cx="35" cy="34" r="23" fill="#ff7777" stroke="#5c4333" stroke-width="7"></circle>
+              <path d="M19 18 l32 32 M51 18 L19 50" stroke="#fff7df" stroke-width="6" stroke-linecap="round"></path>
+              <rect x="65" y="16" width="72" height="38" rx="19" fill="#58c87a" stroke="#356c3d" stroke-width="7"></rect>
+              <circle cx="81" cy="55" r="8" fill="#356c3d"></circle>
+              <circle cx="120" cy="55" r="8" fill="#356c3d"></circle>
+            </g>
+
+            <path d="M36 358 C72 344 109 344 144 360" fill="none" stroke="#fff7df" stroke-width="7" stroke-linecap="round" opacity=".75"></path>
+            <path d="M282 354 C318 340 352 342 384 358" fill="none" stroke="#fff7df" stroke-width="7" stroke-linecap="round" opacity=".6"></path>
+          </svg>
+
+          <div class="slot" data-target-id="sky-puppy" aria-label="左上拼图位置"></div>
+          <div class="slot" data-target-id="sun-house" aria-label="右上拼图位置"></div>
+          <div class="slot" data-target-id="grass-puppy" aria-label="左下拼图位置"></div>
+          <div class="slot" data-target-id="garden-toys" aria-label="右下拼图位置"></div>
+        </div>
+      </div>
+
+      <div class="tray" id="tray" aria-label="拼图片托盘">
+        <button class="piece" data-piece-id="sky-puppy" type="button" aria-label="天空和小狗拼图片">
+          <span class="piece-label">天空</span>
+        </button>
+        <button class="piece" data-piece-id="sun-house" type="button" aria-label="太阳和小屋拼图片">
+          <span class="piece-label">小屋</span>
+        </button>
+        <button class="piece" data-piece-id="grass-puppy" type="button" aria-label="草地和小狗拼图片">
+          <span class="piece-label">小狗</span>
+        </button>
+        <button class="piece" data-piece-id="garden-toys" type="button" aria-label="院子玩具拼图片">
+          <span class="piece-label">玩具</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="completion-overlay" id="celebration" aria-live="polite" hidden>
+      <div class="completion-panel" role="dialog" aria-modal="true" aria-labelledby="completion-title">
+        <div class="completion-stars" aria-hidden="true">★ ★ ★</div>
+        <h2 id="completion-title">拼好了！</h2>
+        <button class="replay-button" id="replay-button" type="button">再玩一次</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

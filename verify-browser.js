@@ -1,0 +1,191 @@
+const fs = require('fs');
+const path = require('path');
+const assert = require('assert/strict');
+const { chromium } = require('playwright');
+
+const baseUrl = process.env.BASE_URL || 'http://localhost:4173/';
+const screenshotsDir = path.join(__dirname, 'artifacts');
+
+fs.mkdirSync(screenshotsDir, { recursive: true });
+
+async function dragPieceToSlot(page, pieceId) {
+  const coords = await page.evaluate((id) => {
+    const piece = document.querySelector(`.piece[data-piece-id="${id}"]`);
+    const slot = document.querySelector(`.slot[data-target-id="${id}"]`);
+    if (!piece || !slot) return null;
+
+    const pieceRect = piece.getBoundingClientRect();
+    const slotRect = slot.getBoundingClientRect();
+    return {
+      from: {
+        x: pieceRect.left + pieceRect.width / 2,
+        y: pieceRect.top + pieceRect.height / 2,
+      },
+      to: {
+        x: slotRect.left + slotRect.width / 2,
+        y: slotRect.top + slotRect.height / 2,
+      },
+    };
+  }, pieceId);
+
+  assert.ok(coords, `missing piece or slot for ${pieceId}`);
+  await page.mouse.move(coords.from.x, coords.from.y);
+  await page.mouse.down();
+  await page.mouse.move(coords.to.x, coords.to.y, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(80);
+}
+
+async function dragPieceToWrongSlot(page, pieceId, wrongTargetId) {
+  const coords = await page.evaluate(({ pieceId: id, wrongTargetId: targetId }) => {
+    const piece = document.querySelector(`.piece[data-piece-id="${id}"]`);
+    const slot = document.querySelector(`.slot[data-target-id="${targetId}"]`);
+    if (!piece || !slot) return null;
+
+    const pieceRect = piece.getBoundingClientRect();
+    const slotRect = slot.getBoundingClientRect();
+    return {
+      from: {
+        x: pieceRect.left + pieceRect.width / 2,
+        y: pieceRect.top + pieceRect.height / 2,
+      },
+      to: {
+        x: slotRect.left + slotRect.width / 2,
+        y: slotRect.top + slotRect.height / 2,
+      },
+    };
+  }, { pieceId, wrongTargetId });
+
+  assert.ok(coords, `missing piece ${pieceId} or wrong slot ${wrongTargetId}`);
+  await page.mouse.move(coords.from.x, coords.from.y);
+  await page.mouse.down();
+  await page.mouse.move(coords.to.x, coords.to.y, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(80);
+}
+
+async function trayOrder(page) {
+  return page.locator('#tray > .piece').evaluateAll((nodes) => (
+    nodes.map((node) => node.dataset.pieceId)
+  ));
+}
+
+async function verifyDesktop(page) {
+  await page.setViewportSize({ width: 1280, height: 820 });
+  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+
+  assert.equal(await page.locator('.piece').count(), 4);
+  assert.equal(await page.locator('.slot').count(), 4);
+  assert.equal(await page.locator('.star.filled').count(), 0);
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '\u5b8c\u6210 0 / 4');
+
+  const initialOrder = ['sky-puppy', 'sun-house', 'grass-puppy', 'garden-toys'];
+  assert.deepEqual(await trayOrder(page), initialOrder);
+  await dragPieceToWrongSlot(page, 'sky-puppy', 'sun-house');
+  assert.deepEqual(await trayOrder(page), initialOrder);
+  assert.equal(await page.locator('.star.filled').count(), 0);
+
+  for (const pieceId of ['sky-puppy', 'sun-house', 'grass-puppy', 'garden-toys']) {
+    await dragPieceToSlot(page, pieceId);
+    const placed = await page.locator(`.piece[data-piece-id="${pieceId}"]`).evaluate((piece) => {
+      return {
+        parentId: piece.parentElement.id,
+        placed: piece.classList.contains('placed'),
+        tabIndex: piece.tabIndex,
+        ariaDisabled: piece.getAttribute('aria-disabled'),
+      };
+    });
+
+    assert.equal(placed.parentId, 'board');
+    assert.equal(placed.placed, true);
+    assert.equal(placed.tabIndex, -1);
+    assert.equal(placed.ariaDisabled, 'true');
+  }
+
+  assert.equal(await page.locator('.star.filled').count(), 4);
+  assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), false);
+  await page.screenshot({ path: path.join(screenshotsDir, 'desktop-complete.png'), fullPage: true });
+
+  await page.locator('#replay-button').click();
+  await page.waitForTimeout(80);
+  assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
+  assert.equal(await page.locator('#tray > .piece').count(), 4);
+  assert.deepEqual(await trayOrder(page), initialOrder);
+  assert.equal(await page.locator('.star.filled').count(), 0);
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '\u5b8c\u6210 0 / 4');
+
+  await page.locator('.piece[data-piece-id="sky-puppy"]').press('Enter');
+  assert.equal(await page.locator('.star.filled').count(), 1);
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '\u5b8c\u6210 1 / 4');
+
+  await page.locator('.piece[data-piece-id="sun-house"]').click();
+  assert.equal(await page.locator('.star.filled').count(), 2);
+
+  await page.locator('.piece[data-piece-id="grass-puppy"]').press('Space');
+  assert.equal(await page.locator('.star.filled').count(), 3);
+
+  await page.locator('.piece[data-piece-id="garden-toys"]').click();
+  await page.waitForTimeout(80);
+  assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), false);
+  assert.equal(await page.locator('.star.filled').count(), 4);
+}
+
+async function verifyMobile(page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+
+  const layout = await page.evaluate(() => {
+    const tray = document.querySelector('.tray');
+    const board = document.querySelector('.board');
+    const pieces = Array.from(document.querySelectorAll('.piece')).map((piece) => {
+      const rect = piece.getBoundingClientRect();
+      return { width: rect.width, height: rect.height };
+    });
+
+    return {
+      bodyOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      trayColumns: getComputedStyle(tray).gridTemplateColumns.split(' ').length,
+      boardWidth: board.getBoundingClientRect().width,
+      minPieceWidth: Math.min(...pieces.map((piece) => piece.width)),
+      minPieceHeight: Math.min(...pieces.map((piece) => piece.height)),
+    };
+  });
+
+  assert.ok(layout.bodyOverflow <= 1, `horizontal overflow ${layout.bodyOverflow}`);
+  assert.equal(layout.trayColumns, 2);
+  assert.ok(layout.boardWidth > 300, `board too small: ${layout.boardWidth}`);
+  assert.ok(layout.minPieceWidth > 130, `piece too narrow: ${layout.minPieceWidth}`);
+  assert.ok(layout.minPieceHeight > 85, `piece too short: ${layout.minPieceHeight}`);
+
+  await page.screenshot({ path: path.join(screenshotsDir, 'mobile-start.png'), fullPage: true });
+}
+
+(async () => {
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.BROWSER_EXECUTABLE || undefined,
+  });
+  const page = await browser.newPage();
+  const consoleErrors = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      const text = message.text();
+      if (!text.includes('favicon.ico')) {
+        consoleErrors.push(text);
+      }
+    }
+  });
+  page.on('pageerror', (error) => {
+    consoleErrors.push(error.message);
+  });
+
+  try {
+    await verifyDesktop(page);
+    await verifyMobile(page);
+    assert.deepEqual(consoleErrors, []);
+  } finally {
+    await browser.close();
+  }
+
+  console.log('browser verification passed');
+})();

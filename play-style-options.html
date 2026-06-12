@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>幼儿拼图游戏方向选择</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #fff7df;
+      color: #28323a;
+    }
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 40px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 48px);
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.55;
+    }
+    .intro {
+      max-width: 760px;
+      margin-bottom: 24px;
+      color: #53606a;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .option {
+      background: #ffffff;
+      border: 3px solid #28323a;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 8px 0 rgba(40, 50, 58, .16);
+    }
+    .visual {
+      min-height: 260px;
+      padding: 18px;
+      display: grid;
+      place-items: center;
+    }
+    .body {
+      padding: 18px;
+      border-top: 3px solid #28323a;
+    }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+    .recommend {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #4f9f5f;
+      color: white;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .frame {
+      width: 100%;
+      max-width: 360px;
+      aspect-ratio: 1.25;
+      position: relative;
+      overflow: hidden;
+      border-radius: 24px;
+      border: 8px solid #fff7df;
+      box-shadow: 0 8px 0 rgba(80,56,20,.18);
+    }
+    .a-bg { background: #8bd7f8; }
+    .hill { position: absolute; left: 0; right: 0; bottom: 0; height: 34%; background: #78c75a; }
+    .dog {
+      position: absolute;
+      left: 8%;
+      top: 14%;
+      width: 30%;
+      height: 34%;
+      background: #ffb36b;
+      border-radius: 48% 48% 42% 42%;
+      border: 5px solid #5b4636;
+    }
+    .ear-left, .ear-right {
+      position: absolute;
+      top: 8%;
+      width: 7%;
+      height: 13%;
+      background: #ffb36b;
+      border: 5px solid #5b4636;
+      border-radius: 55% 55% 20% 20%;
+    }
+    .ear-left { left: 15%; transform: rotate(-22deg); }
+    .ear-right { left: 30%; transform: rotate(22deg); }
+    .eyes {
+      position: absolute;
+      left: 18%;
+      top: 25%;
+      width: 5%;
+      height: 5%;
+      background: #33251e;
+      border-radius: 50%;
+      box-shadow: 42px 0 0 #33251e;
+    }
+    .nose {
+      position: absolute;
+      left: 25%;
+      top: 35%;
+      width: 24px;
+      height: 14px;
+      background: #5b4636;
+      border-radius: 50%;
+    }
+    .blue-dog {
+      position: absolute;
+      right: 11%;
+      top: 15%;
+      width: 34%;
+      height: 28%;
+      background: #5ec0ee;
+      border: 5px solid #254f73;
+      border-radius: 20px;
+    }
+    .blue-eyes {
+      position: absolute;
+      right: 20%;
+      top: 22%;
+      width: 8%;
+      height: 8%;
+      background: #254f73;
+      border-radius: 50%;
+      box-shadow: 36px 0 0 #254f73;
+    }
+    .smile {
+      position: absolute;
+      right: 23%;
+      top: 33%;
+      width: 42px;
+      height: 8px;
+      background: #254f73;
+      border-radius: 12px;
+    }
+    .pieces {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+    .pieces div:nth-child(1) { border-right: 4px dashed rgba(255,255,255,.9); border-bottom: 4px dashed rgba(255,255,255,.9); }
+    .pieces div:nth-child(2) { border-bottom: 4px dashed rgba(255,255,255,.9); }
+    .pieces div:nth-child(3) { border-right: 4px dashed rgba(255,255,255,.9); }
+    .pair-board {
+      width: 100%;
+      max-width: 360px;
+      aspect-ratio: 1.25;
+      background: #fff7df;
+      border-radius: 24px;
+      border: 8px solid #6bb4e8;
+      box-shadow: 0 8px 0 rgba(29,70,100,.18);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      padding: 18px;
+    }
+    .slot { border: 4px dashed #2d8aba; border-radius: 20px; background: #c8efff; }
+    .slot:first-child { border-color: #d88f49; background: #ffe1b5; }
+    .sticker {
+      display: grid;
+      place-items: center;
+      border-radius: 24px;
+      border: 5px solid #5b4636;
+      background: #ffb36b;
+      font-size: 42px;
+      font-weight: 800;
+    }
+    .sticker.blue { background: #5ec0ee; border-color: #254f73; color: #fff; }
+    .scene-board {
+      width: 100%;
+      max-width: 360px;
+      aspect-ratio: 1.25;
+      background: #fff7df;
+      border-radius: 24px;
+      border: 8px solid #6d8a4d;
+      box-shadow: 0 8px 0 rgba(70,80,35,.18);
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding: 18px;
+    }
+    .scene-top {
+      grid-column: span 3;
+      height: 86px;
+      background: #8bd7f8;
+      border-radius: 18px;
+      border: 4px solid #fff;
+      position: relative;
+      overflow: hidden;
+    }
+    .scene-top span {
+      position: absolute;
+      left: 20px;
+      bottom: 12px;
+      width: 70px;
+      height: 38px;
+      background: #78c75a;
+      border-radius: 50%;
+    }
+    .tile { height: 78px; border-radius: 18px; border: 4px solid #fff; }
+    .tile.yellow { background: #f8d96b; }
+    .tile.blue { background: #5ec0ee; }
+    .tile.orange { background: #ffb36b; }
+    .note {
+      margin-top: 28px;
+      padding: 16px 18px;
+      background: #e9f6ff;
+      border: 2px solid #5b9cc9;
+      border-radius: 8px;
+      color: #254f73;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .visual { min-height: 220px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>幼儿拼图游戏方向选择</h1>
+    <p class="intro">目标是做一个受温暖家庭小狗动画启发、但使用原创角色和画面的拼图游戏。请选择一个方向，或直接告诉我“按 A 做”。</p>
+
+    <section class="grid" aria-label="玩法选项">
+      <article class="option">
+        <div class="visual" style="background:#f8d96b;">
+          <div class="frame a-bg">
+            <div class="hill"></div>
+            <div class="dog"></div>
+            <div class="ear-left"></div>
+            <div class="ear-right"></div>
+            <div class="eyes"></div>
+            <div class="nose"></div>
+            <div class="blue-dog"></div>
+            <div class="blue-eyes"></div>
+            <div class="smile"></div>
+            <div class="pieces"><div></div><div></div><div></div><div></div></div>
+          </div>
+        </div>
+        <div class="body">
+          <span class="recommend">推荐</span>
+          <h2>A. 四块拖拽拼图</h2>
+          <p>2x2 大拼块，拖到影子位置，吸附成功会发光和播放鼓励反馈。最适合 3 岁半孩子第一次玩。</p>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="visual" style="background:#b7e3a1;">
+          <div class="pair-board">
+            <div class="slot"></div>
+            <div class="slot"></div>
+            <div class="sticker">1</div>
+            <div class="sticker blue">2</div>
+          </div>
+        </div>
+        <div class="body">
+          <h2>B. 贴纸配对拼图</h2>
+          <p>把角色贴纸拖到相同轮廓上。更简单，但拼图感弱一些，更像认知配对游戏。</p>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="visual" style="background:#ffc7c2;">
+          <div class="scene-board">
+            <div class="scene-top"><span></span></div>
+            <div class="tile yellow"></div>
+            <div class="tile blue"></div>
+            <div class="tile orange"></div>
+          </div>
+        </div>
+        <div class="body">
+          <h2>C. 多场景闯关</h2>
+          <p>院子、厨房、睡前故事三关，从 4 块到 6 块。内容更丰富，但第一版复杂度更高。</p>
+        </div>
+      </article>
+    </section>
+
+    <p class="note">我的建议：第一版做 A。画面原创，保留明亮、亲子、澳洲院子感；玩法只要求拖拽和吸附，完成后有星星、掌声和“再玩一次”。</p>
+  </main>
+</body>
+</html>
