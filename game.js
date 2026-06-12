@@ -2,6 +2,7 @@
   const {
     createPieceIds,
     createGameState,
+    isTargetAccepted,
     tryPlacePiece,
     isComplete,
     resetGameState,
@@ -37,6 +38,8 @@
   const hintPieces = new Map();
   let hintGeneration = 0;
   let isRestoringState = false;
+  let equivalentTargets = {};
+  let equivalentAnalysisToken = 0;
   const modeState = {
     guide: true,
     correction: true,
@@ -158,6 +161,21 @@
     });
   }
 
+  function defaultEquivalentTargets() {
+    return Object.fromEntries(pieceIds.map((pieceId) => [pieceId, [pieceId]]));
+  }
+
+  function publishDebugState() {
+    window.__puppyJigsawDebug = {
+      equivalentTargets,
+    };
+  }
+
+  function setEquivalentTargets(targets) {
+    equivalentTargets = targets;
+    publishDebugState();
+  }
+
   function setPuzzleImage(url) {
     root.style.setProperty('--puzzle-image', `url("${url}")`);
   }
@@ -193,6 +211,7 @@
     const size = await loadImageSize(url);
     if (token === imageLoadToken) {
       setPuzzleRatio(size.width, size.height);
+      await refreshEquivalentTargets();
     }
   }
 
@@ -234,6 +253,120 @@
       image.onerror = reject;
       image.src = url;
     });
+  }
+
+  function featureDistance(first, second) {
+    const colorDistance = Math.hypot(
+      first.red - second.red,
+      first.green - second.green,
+      first.blue - second.blue,
+    );
+    const detailDistance = Math.abs(first.detail - second.detail);
+    const saturationDistance = Math.abs(first.saturation - second.saturation);
+
+    return colorDistance + detailDistance * 2 + saturationDistance * 0.5;
+  }
+
+  function buildEquivalentTargets(features) {
+    const targets = defaultEquivalentTargets();
+
+    for (let firstIndex = 0; firstIndex < features.length; firstIndex += 1) {
+      const first = features[firstIndex];
+      for (let secondIndex = firstIndex + 1; secondIndex < features.length; secondIndex += 1) {
+        const second = features[secondIndex];
+        const lowDetail = first.detail < 18 && second.detail < 18;
+        const similar = featureDistance(first, second) < 18;
+
+        if (!lowDetail || !similar) {
+          continue;
+        }
+
+        targets[first.pieceId] = Array.from(new Set([...targets[first.pieceId], second.pieceId]));
+        targets[second.pieceId] = Array.from(new Set([...targets[second.pieceId], first.pieceId]));
+      }
+    }
+
+    return targets;
+  }
+
+  async function analyzePieceFeatures(url, size) {
+    const image = await getImageElement(url);
+    const sampleSize = 24;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    const width = sampleSize * size;
+    const height = sampleSize * size;
+
+    canvas.width = width;
+    canvas.height = height;
+    context.drawImage(image, 0, 0, width, height);
+
+    return pieceIds.map((pieceId) => {
+      const { row, col } = parsePieceId(pieceId);
+      const data = context.getImageData(
+        col * sampleSize,
+        row * sampleSize,
+        sampleSize,
+        sampleSize,
+      ).data;
+      let red = 0;
+      let green = 0;
+      let blue = 0;
+      let light = 0;
+      let lightSquared = 0;
+      let saturation = 0;
+      const pixels = data.length / 4;
+
+      for (let index = 0; index < data.length; index += 4) {
+        const pixelRed = data[index];
+        const pixelGreen = data[index + 1];
+        const pixelBlue = data[index + 2];
+        const pixelLight = (pixelRed + pixelGreen + pixelBlue) / 3;
+
+        red += pixelRed;
+        green += pixelGreen;
+        blue += pixelBlue;
+        light += pixelLight;
+        lightSquared += pixelLight * pixelLight;
+        saturation += Math.max(pixelRed, pixelGreen, pixelBlue)
+          - Math.min(pixelRed, pixelGreen, pixelBlue);
+      }
+
+      red /= pixels;
+      green /= pixels;
+      blue /= pixels;
+      light /= pixels;
+      lightSquared /= pixels;
+
+      return {
+        pieceId,
+        red,
+        green,
+        blue,
+        detail: Math.sqrt(Math.max(0, lightSquared - light * light)),
+        saturation: saturation / pixels,
+      };
+    });
+  }
+
+  async function refreshEquivalentTargets() {
+    const token = equivalentAnalysisToken + 1;
+    const url = currentImageUrl;
+    const size = gridSize;
+
+    equivalentAnalysisToken = token;
+    setEquivalentTargets(defaultEquivalentTargets());
+
+    try {
+      const features = await analyzePieceFeatures(url, size);
+      if (token === equivalentAnalysisToken && url === currentImageUrl && size === gridSize) {
+        setEquivalentTargets(buildEquivalentTargets(features));
+      }
+    } catch (error) {
+      if (token === equivalentAnalysisToken) {
+        setEquivalentTargets(defaultEquivalentTargets());
+      }
+    }
   }
 
   async function findDetailedHintPieceId(url, size, allowedPieceIds = pieceIds) {
@@ -791,9 +924,20 @@
       return isComplete(gameState);
     }
 
+    const usedTargets = new Set();
     return pieceIds.every((pieceId) => {
       const piece = gameState.pieces[pieceId];
-      return piece?.placed === true && piece.currentTargetId === piece.targetId;
+      if (
+        piece?.placed !== true
+        || !piece.currentTargetId
+        || usedTargets.has(piece.currentTargetId)
+        || !isTargetAccepted(piece, piece.currentTargetId, equivalentTargets)
+      ) {
+        return false;
+      }
+
+      usedTargets.add(piece.currentTargetId);
+      return true;
     });
   }
 
@@ -988,10 +1132,14 @@
     const point = { x: event.clientX, y: event.clientY };
     movePieceToPointer(drag.piece, event.clientX, event.clientY);
     const closestSlot = getDropSlot(point, drag.piece);
-    const nextState = closestSlot && modeState.correction
+    const occupiedSlotPiece = closestSlot
+      ? getPlacedPieceAtTarget(closestSlot.targetId, drag.pieceId)
+      : null;
+    const nextState = closestSlot && modeState.correction && !occupiedSlotPiece
       ? tryPlacePiece(gameState, {
         pieceId: drag.pieceId,
         targetId: closestSlot.targetId,
+        equivalentTargets,
         pieceCenter: point,
         targetCenter: closestSlot.center,
         snapThreshold: closestSlot.snapThreshold,
@@ -1060,9 +1208,14 @@
     }
 
     const slotDetails = getSlotDetails(slot, { x: 0, y: 0 });
+    if (getPlacedPieceAtTarget(targetId, pieceId)) {
+      return;
+    }
+
     const nextState = tryPlacePiece(gameState, {
       pieceId,
       targetId,
+      equivalentTargets,
       pieceCenter: slotDetails.center,
       targetCenter: slotDetails.center,
       snapThreshold: slotDetails.snapThreshold,
@@ -1170,6 +1323,7 @@
     setGridVariables();
     updateGridButtons();
     resetGame({ preserveFocus: true });
+    refreshEquivalentTargets();
     setStatus(`已切换为 ${gridSize}x${gridSize}`);
   }
 

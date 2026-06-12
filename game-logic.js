@@ -17,8 +17,10 @@ function createPieceIds(gridSize) {
 function createPiecesState(pieceIds) {
   return pieceIds.reduce((pieces, pieceId) => {
     pieces[pieceId] = {
+      pieceId,
       placed: false,
       targetId: pieceId,
+      currentTargetId: null,
     };
     return pieces;
   }, {});
@@ -49,11 +51,29 @@ function getDistance(pointA, pointB) {
   return Math.hypot(pointA.x - pointB.x, pointA.y - pointB.y);
 }
 
+function equivalentTargetList(equivalentTargets, pieceId) {
+  if (!equivalentTargets) {
+    return [];
+  }
+
+  if (equivalentTargets instanceof Map) {
+    return equivalentTargets.get(pieceId) || [];
+  }
+
+  return equivalentTargets[pieceId] || [];
+}
+
+function isTargetAccepted(piece, targetId, equivalentTargets) {
+  return piece.targetId === targetId
+    || equivalentTargetList(equivalentTargets, piece.targetId).includes(targetId)
+    || equivalentTargetList(equivalentTargets, piece.pieceId).includes(targetId);
+}
+
 function tryPlacePiece(state, options) {
   const next = cloneGameState(state);
   const piece = next.pieces[options.pieceId];
 
-  if (!piece || piece.placed || piece.targetId !== options.targetId) {
+  if (!piece || piece.placed || !isTargetAccepted(piece, options.targetId, options.equivalentTargets)) {
     return next;
   }
 
@@ -61,6 +81,7 @@ function tryPlacePiece(state, options) {
 
   if (distance <= options.snapThreshold) {
     piece.placed = true;
+    piece.currentTargetId = options.targetId;
     next.placedCount += 1;
   }
 
@@ -79,6 +100,7 @@ const PuppyJigsawLogic = {
   SUPPORTED_GRID_SIZES,
   createPieceIds,
   createGameState,
+  isTargetAccepted,
   tryPlacePiece,
   isComplete,
   resetGameState,

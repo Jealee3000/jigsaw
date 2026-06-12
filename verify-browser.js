@@ -121,11 +121,16 @@ async function currentPuzzleImage(page) {
 }
 
 async function uploadTestImage(page, fileName, fill, accent, width = 600, height = 420) {
-  const uploadPath = path.join(screenshotsDir, fileName);
-  fs.writeFileSync(
-    uploadPath,
+  return uploadSvgText(
+    page,
+    fileName,
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="${fill}"/><circle cx="${width / 2}" cy="${height / 2}" r="${Math.min(width, height) / 4}" fill="${accent}"/></svg>`,
   );
+}
+
+async function uploadSvgText(page, fileName, svgText) {
+  const uploadPath = path.join(screenshotsDir, fileName);
+  fs.writeFileSync(uploadPath, svgText);
 
   await page.locator('#image-input').setInputFiles(uploadPath);
   const card = page.locator(`.image-card[data-image-name="${fileName}"]`);
@@ -212,7 +217,20 @@ async function assertDesktopPuzzleLayout(page) {
 }
 
 async function verifyPlayModes(page) {
-  await uploadTestImage(page, 'browser-test-wide.svg', '#8edcff', '#ef6f63', 500, 300);
+  await uploadSvgText(
+    page,
+    'browser-test-wide.svg',
+    `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300">
+      <rect x="0" y="0" width="250" height="150" fill="#8edcff"/>
+      <circle cx="92" cy="76" r="44" fill="#26313a"/>
+      <rect x="250" y="0" width="250" height="150" fill="#ef6f63"/>
+      <path d="M280 25 H470 M280 74 H470 M280 123 H470" stroke="#fff6dd" stroke-width="20"/>
+      <rect x="0" y="150" width="250" height="150" fill="#67c86f"/>
+      <path d="M0 278 C70 218 158 318 250 238" fill="none" stroke="#fff6dd" stroke-width="28"/>
+      <rect x="250" y="150" width="250" height="150" fill="#ffd958"/>
+      <path d="M376 170 L468 288 H286 Z" fill="#2457d6"/>
+    </svg>`,
+  );
   await assertPuzzleAspect(page, 500 / 300);
 
   assert.equal(await page.locator('.piece-label').first().isVisible(), false);
@@ -287,6 +305,46 @@ async function verifyFreePlacementBoardSwap(page) {
   await assertGrid(page, 2);
 }
 
+async function verifyEquivalentPieces(page) {
+  await uploadSvgText(
+    page,
+    'browser-test-equivalent.svg',
+    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">
+      <rect x="0" y="0" width="200" height="200" fill="#c8b4f4"/>
+      <rect x="200" y="0" width="200" height="200" fill="#c8b4f4"/>
+      <rect x="0" y="200" width="200" height="200" fill="#67c86f"/>
+      <rect x="200" y="200" width="200" height="200" fill="#ef6f63"/>
+      <circle cx="100" cy="300" r="42" fill="#ffffff"/>
+      <path d="M260 250 L350 350" stroke="#26313a" stroke-width="20"/>
+    </svg>`,
+  );
+
+  const equivalentGroup = await page.evaluate(() => (
+    window.__puppyJigsawDebug?.equivalentTargets?.['piece-0-0'] || []
+  ));
+  assert.deepEqual(new Set(equivalentGroup), new Set(['piece-0-0', 'piece-0-1']));
+
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 1 / 4');
+  assert.equal(
+    await page.locator('.piece[data-piece-id="piece-0-0"]').getAttribute('data-current-target-id'),
+    'piece-0-1',
+  );
+
+  await dragPieceToSlot(page, 'piece-0-1', 'piece-0-1');
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 1 / 4');
+  assert.equal(await page.locator('.piece[data-current-target-id="piece-0-1"]').count(), 1);
+
+  await dragPieceToSlot(page, 'piece-0-1', 'piece-0-0');
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 2 / 4');
+
+  await dragPieceToSlot(page, 'piece-1-0', 'piece-1-1');
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 2 / 4');
+
+  await page.locator('#reset-button').click();
+  await assertGrid(page, 2);
+}
+
 async function verifyBrowserPersistence(page) {
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'networkidle' });
@@ -357,6 +415,7 @@ async function verifyDesktop(page) {
   await verifyImageLibrary(page);
   await verifyPlayModes(page);
   await verifyFreePlacementBoardSwap(page);
+  await verifyEquivalentPieces(page);
   await verifyBrowserPersistence(page);
 
   await page.locator('.grid-button[data-grid-size="3"]').click();
