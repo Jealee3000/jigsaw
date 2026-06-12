@@ -96,6 +96,12 @@ async function dragPieceToSlotByGrabOffset(page, pieceId, targetId, offsetXRatio
   await page.waitForTimeout(80);
 }
 
+async function visitWithEmptyStorage(page) {
+  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  await page.evaluate(() => localStorage.clear());
+  await page.reload({ waitUntil: 'networkidle' });
+}
+
 async function trayOrder(page) {
   return page.locator('#tray > .piece').evaluateAll((nodes) => (
     nodes.map((node) => node.dataset.pieceId)
@@ -281,6 +287,51 @@ async function verifyFreePlacementBoardSwap(page) {
   await assertGrid(page, 2);
 }
 
+async function verifyBrowserPersistence(page) {
+  await page.evaluate(() => localStorage.clear());
+  await page.reload({ waitUntil: 'networkidle' });
+
+  await uploadTestImage(page, 'browser-test-persist.svg', '#cbb7f6', '#bde04b', 420, 420);
+  await page.locator('.mode-button[data-mode="guide"]').click();
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');
+  await dragPieceToSlot(page, 'piece-0-1', 'piece-0-0');
+  await page.locator('.mode-button[data-mode="hint"]').click();
+  await page.locator('.slot.guide-hint[data-hint-ready="true"]').waitFor({ state: 'visible' });
+
+  await page.reload({ waitUntil: 'networkidle' });
+
+  const restored = await page.evaluate(() => ({
+    image: getComputedStyle(document.documentElement).getPropertyValue('--puzzle-image'),
+    gridSize: getComputedStyle(document.documentElement).getPropertyValue('--grid-size').trim(),
+    hideGuide: document.querySelector('#board').classList.contains('hide-guide'),
+    freePlacement: document.documentElement.classList.contains('free-placement'),
+    progress: document.querySelector('.progress').getAttribute('aria-label'),
+    placements: Object.fromEntries(
+      Array.from(document.querySelectorAll('.piece.placed')).map((piece) => [
+        piece.dataset.pieceId,
+        piece.dataset.currentTargetId,
+      ]),
+    ),
+    hintCount: document.querySelectorAll('.slot.guide-hint').length,
+    selectedName: document.querySelector('.image-card.selected .image-name')?.textContent || '',
+  }));
+
+  assert.match(restored.image, /browser-test-persist\.svg/);
+  assert.equal(restored.gridSize, '2');
+  assert.equal(restored.hideGuide, true);
+  assert.equal(restored.freePlacement, true);
+  assert.equal(restored.progress, '完成 2 / 4');
+  assert.equal(restored.placements['piece-0-0'], 'piece-0-1');
+  assert.equal(restored.placements['piece-0-1'], 'piece-0-0');
+  assert.equal(restored.hintCount, 1);
+  assert.equal(restored.selectedName, 'browser-test-persist.svg');
+
+  await page.evaluate(() => localStorage.clear());
+  await page.reload({ waitUntil: 'networkidle' });
+  await assertGrid(page, 2);
+}
+
 async function verifyImageLibrary(page) {
   const initialCards = await page.locator('.image-card').count();
   assert.ok(initialCards >= 0);
@@ -299,13 +350,14 @@ async function verifyImageLibrary(page) {
 
 async function verifyDesktop(page) {
   await page.setViewportSize({ width: 1280, height: 820 });
-  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  await visitWithEmptyStorage(page);
 
   await assertGrid(page, 2);
   await assertDesktopPuzzleLayout(page);
   await verifyImageLibrary(page);
   await verifyPlayModes(page);
   await verifyFreePlacementBoardSwap(page);
+  await verifyBrowserPersistence(page);
 
   await page.locator('.grid-button[data-grid-size="3"]').click();
   await assertGrid(page, 3);
@@ -363,7 +415,7 @@ async function verifyDesktop(page) {
 
 async function verifyMobile(page) {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  await visitWithEmptyStorage(page);
   await page.locator('.grid-button[data-grid-size="4"]').click();
 
   const layout = await page.evaluate(() => {

@@ -22,6 +22,7 @@
   const modeButtons = Array.from(document.querySelectorAll('.mode-button'));
   const suppressedClicks = new WeakSet();
   const fallbackImageUrl = getFallbackImageUrl();
+  const storageKey = 'puppy-jigsaw-state-v1';
 
   let gridSize = 2;
   let pieceIds = createPieceIds(gridSize);
@@ -35,6 +36,7 @@
   let puzzleRatio = 600 / 420;
   const hintPieces = new Map();
   let hintGeneration = 0;
+  let isRestoringState = false;
   const modeState = {
     guide: true,
     correction: true,
@@ -92,6 +94,68 @@
 
   function setStatus(message) {
     statusMessage.textContent = message;
+  }
+
+  function readSavedState() {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) {
+        return null;
+      }
+
+      const saved = JSON.parse(raw);
+      return saved?.version === 1 ? saved : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeSavedState(saved) {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(saved));
+    } catch (error) {
+      // Local storage can be unavailable in restricted browser contexts.
+    }
+  }
+
+  function selectedImageName() {
+    return imageLibrary.find((image) => image.url === currentImageUrl)?.name || null;
+  }
+
+  function orderedPieceIds(ids) {
+    const valid = new Set(pieceIds);
+    const ordered = ids.filter((pieceId) => valid.has(pieceId));
+    const missing = pieceIds.filter((pieceId) => !ordered.includes(pieceId));
+    return [...ordered, ...missing];
+  }
+
+  function serializePieces() {
+    return Object.fromEntries(pieceIds.map((pieceId) => {
+      const piece = gameState.pieces[pieceId];
+      return [pieceId, {
+        placed: piece?.placed === true,
+        currentTargetId: piece?.currentTargetId || null,
+      }];
+    }));
+  }
+
+  function saveState() {
+    if (isRestoringState) {
+      return;
+    }
+
+    writeSavedState({
+      version: 1,
+      imageName: selectedImageName(),
+      gridSize,
+      trayPieceIds,
+      modeState: {
+        guide: modeState.guide,
+        correction: modeState.correction,
+      },
+      pieces: serializePieces(),
+      hints: Array.from(hintPieces.keys()),
+    });
   }
 
   function setPuzzleImage(url) {
@@ -253,6 +317,7 @@
     hintPieces.set(fallback, 0);
     updateGuideHint();
     setStatus(`已添加 ${hintPieces.size} 个提示`);
+    saveState();
 
     findDetailedHintPieceId(url, size, candidates)
       .then((entry) => {
@@ -267,6 +332,7 @@
         hintPieces.delete(fallback);
         hintPieces.set(entry.pieceId, entry.score);
         updateGuideHint();
+        saveState();
       })
       .catch(() => {
         updateGuideHint();
@@ -355,6 +421,12 @@
 
       imageLibrary = Array.isArray(result.images) ? result.images : [];
       renderImageLibrary();
+
+      if (await restoreSavedState()) {
+        renderImageLibrary();
+        setStatus(`已恢复 ${imageLibrary.length} 张图片`);
+        return;
+      }
 
       if (imageLibrary.length > 0 && currentImageUrl === fallbackImageUrl) {
         await selectLibraryImage(imageLibrary[0], { silent: true });
@@ -496,7 +568,7 @@
     return document.querySelector(`.slot[data-target-id="${pieceId}"]`);
   }
 
-  function renderPuzzle() {
+  function renderPuzzle(options = {}) {
     for (const piece of Array.from(board.querySelectorAll('.piece'))) {
       piece.remove();
     }
@@ -504,7 +576,11 @@
     slotLayer.replaceChildren();
     tray.replaceChildren();
 
-    trayPieceIds = shufflePieceIds(pieceIds);
+    if (!options.preserveTrayOrder) {
+      trayPieceIds = shufflePieceIds(pieceIds);
+    } else {
+      trayPieceIds = orderedPieceIds(trayPieceIds);
+    }
 
     for (const pieceId of pieceIds) {
       slotLayer.appendChild(createSlot(pieceId));
@@ -520,6 +596,74 @@
       syncLayoutSize();
       syncLoosePieceSize();
     });
+  }
+
+  async function restoreSavedState() {
+    const saved = readSavedState();
+    if (!saved) {
+      return false;
+    }
+
+    const savedGridSize = Number(saved.gridSize);
+    if (![2, 3, 4].includes(savedGridSize)) {
+      return false;
+    }
+
+    const image = imageLibrary.find((candidate) => candidate.name === saved.imageName);
+    if (!image) {
+      return false;
+    }
+
+    isRestoringState = true;
+    activeDrag = null;
+    gridSize = savedGridSize;
+    pieceIds = createPieceIds(gridSize);
+    trayPieceIds = orderedPieceIds(Array.isArray(saved.trayPieceIds) ? saved.trayPieceIds : []);
+    gameState = resetGameState(pieceIds);
+    modeState.guide = saved.modeState?.guide !== false;
+    modeState.correction = saved.modeState?.correction !== false;
+    hintPieces.clear();
+    hintGeneration += 1;
+
+    await setCurrentImage(image.url);
+    setGridVariables();
+    updateGridButtons();
+    updateModeControls();
+    clearReadySlots();
+    celebration.hidden = true;
+    renderPuzzle({ preserveTrayOrder: true });
+
+    const usedTargets = new Set();
+    for (const pieceId of pieceIds) {
+      const savedPiece = saved.pieces?.[pieceId];
+      const targetId = savedPiece?.currentTargetId;
+      if (!savedPiece?.placed || !pieceIds.includes(targetId) || usedTargets.has(targetId)) {
+        continue;
+      }
+
+      const piece = document.querySelector(`.piece[data-piece-id="${pieceId}"]`);
+      const slot = getSlotByTargetId(targetId);
+      if (!piece || !slot) {
+        continue;
+      }
+
+      usedTargets.add(targetId);
+      markPiecePlaced(pieceId, targetId);
+      placePiece(piece, slot);
+    }
+
+    for (const pieceId of Array.isArray(saved.hints) ? saved.hints : []) {
+      if (pieceIds.includes(pieceId) && !usedTargets.has(pieceId)) {
+        hintPieces.set(pieceId, 1);
+      }
+    }
+
+    updateGuideHint();
+    updateProgress();
+    showCelebrationIfComplete();
+    isRestoringState = false;
+    saveState();
+    return true;
   }
 
   function getSnapThreshold(slotRect) {
@@ -875,6 +1019,7 @@
       placePiece(drag.piece, closestSlot.slot);
       updateProgress();
       showCelebrationIfComplete();
+      saveState();
       return;
     }
 
@@ -883,10 +1028,12 @@
       placePiece(drag.piece, closestSlot.slot);
       updateProgress();
       showCelebrationIfComplete();
+      saveState();
       return;
     }
 
     setPieceLoose(drag.piece);
+    saveState();
     if (!drag.didMove) {
       placePieceByActivation(drag.piece);
     }
@@ -900,6 +1047,7 @@
     releasePointerCapture(activeDrag.piece, event.pointerId);
     suppressedClicks.add(activeDrag.piece);
     returnActivePieceToTray();
+    saveState();
   }
 
   function placePieceByActivation(piece) {
@@ -932,6 +1080,7 @@
     if (!showCelebrationIfComplete()) {
       focusFirstLoosePiece();
     }
+    saveState();
   }
 
   function onPieceClick(event) {
@@ -989,6 +1138,7 @@
       return;
     }
 
+    saveState();
     setStatus(modeState[mode] ? `已开启${event.currentTarget.textContent}` : `已隐藏${event.currentTarget.textContent}`);
   }
 
@@ -1000,6 +1150,7 @@
     celebration.hidden = true;
     renderPuzzle();
     updateProgress();
+    saveState();
 
     if (!options.preserveFocus) {
       resetButton.focus();
