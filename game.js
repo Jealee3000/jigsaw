@@ -912,8 +912,74 @@
     return targets;
   }
 
-  function canPlaceGroup(targets, groupPieceIds) {
+  function collectGroupBlockers(targets, groupPieceIds) {
     const groupSet = new Set(groupPieceIds);
+    const blockers = [];
+
+    for (const [pieceId, targetId] of targets.entries()) {
+      const occupiedPiece = getPlacedPieceAtTarget(targetId, pieceId);
+      if (occupiedPiece && !groupSet.has(occupiedPiece.dataset.pieceId)) {
+        blockers.push(occupiedPiece);
+      }
+    }
+
+    return blockers;
+  }
+
+  function buildGroupSwapTargets(drag, targets) {
+    const activeTargetId = targets.get(drag.pieceId);
+    if (!drag.originTargetId || !activeTargetId) {
+      return null;
+    }
+
+    const blockers = collectGroupBlockers(targets, drag.groupPieceIds);
+    if (!blockers.length) {
+      return new Map();
+    }
+
+    const offset = targetOffset(drag.originTargetId, activeTargetId);
+    const inverseOffset = { row: -offset.row, col: -offset.col };
+    const groupSet = new Set(drag.groupPieceIds);
+    const blockerSet = new Set(blockers.map((piece) => piece.dataset.pieceId));
+    const swapTargets = new Map();
+    const usedTargets = new Set();
+
+    for (const blocker of blockers) {
+      const pieceId = blocker.dataset.pieceId;
+      const piece = gameState.pieces[pieceId];
+      const currentTargetId = blocker.dataset.currentTargetId || piece?.currentTargetId;
+      const swapTargetId = shiftedTargetId(currentTargetId, inverseOffset, gridSize);
+
+      if (!piece || !swapTargetId || usedTargets.has(swapTargetId)) {
+        return null;
+      }
+
+      const occupiedPiece = getPlacedPieceAtTarget(swapTargetId, pieceId);
+      if (
+        occupiedPiece
+        && !groupSet.has(occupiedPiece.dataset.pieceId)
+        && !blockerSet.has(occupiedPiece.dataset.pieceId)
+      ) {
+        return null;
+      }
+
+      if (
+        modeState.correction
+        && !isTargetAccepted(piece, swapTargetId, equivalentTargets)
+      ) {
+        return null;
+      }
+
+      swapTargets.set(pieceId, swapTargetId);
+      usedTargets.add(swapTargetId);
+    }
+
+    return swapTargets;
+  }
+
+  function canPlaceGroup(targets, groupPieceIds, swapTargets = new Map()) {
+    const groupSet = new Set(groupPieceIds);
+    const swappableBlockers = new Set(swapTargets.keys());
 
     for (const [pieceId, targetId] of targets.entries()) {
       if (!getSlotByTargetId(targetId)) {
@@ -921,7 +987,11 @@
       }
 
       const occupiedPiece = getPlacedPieceAtTarget(targetId, pieceId);
-      if (occupiedPiece && !groupSet.has(occupiedPiece.dataset.pieceId)) {
+      if (
+        occupiedPiece
+        && !groupSet.has(occupiedPiece.dataset.pieceId)
+        && !swappableBlockers.has(occupiedPiece.dataset.pieceId)
+      ) {
         return false;
       }
 
@@ -934,6 +1004,19 @@
     }
 
     return true;
+  }
+
+  function placeGroupSwapTargets(swapTargets) {
+    for (const [pieceId, targetId] of swapTargets.entries()) {
+      const piece = document.querySelector(`.piece[data-piece-id="${pieceId}"]`);
+      const slot = getSlotByTargetId(targetId);
+      if (!piece || !slot) {
+        continue;
+      }
+
+      markPiecePlaced(pieceId, targetId);
+      placePiece(piece, slot);
+    }
   }
 
   function placeDraggedGroup(drag, targets) {
@@ -1301,8 +1384,16 @@
       const groupTargets = closestSlot && isDropReady(closestSlot)
         ? buildGroupDropTargets(drag, closestSlot.targetId)
         : null;
+      const groupSwapTargets = groupTargets
+        ? buildGroupSwapTargets(drag, groupTargets)
+        : null;
 
-      if (groupTargets && canPlaceGroup(groupTargets, drag.groupPieceIds)) {
+      if (
+        groupTargets
+        && groupSwapTargets
+        && canPlaceGroup(groupTargets, drag.groupPieceIds, groupSwapTargets)
+      ) {
+        placeGroupSwapTargets(groupSwapTargets);
         placeDraggedGroup(drag, groupTargets);
         updateProgress();
         recomputeGlueGroups();

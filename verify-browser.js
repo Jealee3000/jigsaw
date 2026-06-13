@@ -389,6 +389,34 @@ async function verifyGlueMode(page) {
   await page.locator('.mode-button[data-mode="correction"]').click();
   await page.locator('.mode-button[data-mode="glue"]').click();
   await assertGrid(page, 2);
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-0-0');
+  await dragPieceToSlot(page, 'piece-0-1', 'piece-0-1');
+  await dragPieceToSlot(page, 'piece-1-0', 'piece-1-1');
+  await dragPieceToSlot(page, 'piece-1-1', 'piece-1-0');
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-1-0');
+
+  const swappedPlacements = await page.evaluate(() => (
+    Object.fromEntries(
+      Array.from(document.querySelectorAll('.piece.placed')).map((piece) => [
+        piece.dataset.pieceId,
+        piece.dataset.currentTargetId,
+      ]),
+    )
+  ));
+  assert.equal(swappedPlacements['piece-0-0'], 'piece-1-0');
+  assert.equal(swappedPlacements['piece-0-1'], 'piece-1-1');
+  assert.equal(swappedPlacements['piece-1-0'], 'piece-0-1');
+  assert.equal(swappedPlacements['piece-1-1'], 'piece-0-0');
+  assert.equal(new Set(Object.values(swappedPlacements)).size, 4);
+  assert.equal(await page.locator('.progress').textContent(), '4 / 4');
+  assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  await assertGrid(page, 2);
 }
 
 async function verifyEquivalentPieces(page) {
