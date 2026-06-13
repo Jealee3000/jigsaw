@@ -406,6 +406,15 @@ async function verifyEquivalentPieces(page) {
   ));
   assert.deepEqual(new Set(equivalentGroup), new Set(['piece-0-0', 'piece-0-1']));
 
+  const firstCacheStats = await page.evaluate(() => window.PuppyJigsawImageAnalysis.cacheStats());
+  await page.locator('.grid-button[data-grid-size="3"]').click();
+  await assertGrid(page, 3);
+  await page.locator('.grid-button[data-grid-size="2"]').click();
+  await assertGrid(page, 2);
+  await page.waitForFunction((hits) => (
+    window.PuppyJigsawImageAnalysis.cacheStats().featureHits > hits
+  ), firstCacheStats.featureHits);
+
   await dragPieceToSlot(page, 'piece-0-0', 'piece-0-1');
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 1 / 4');
   assert.equal(

@@ -292,12 +292,13 @@
     const token = equivalentAnalysisToken + 1;
     const url = currentImageUrl;
     const size = gridSize;
+    const signature = selectedImage()?.signature || '';
 
     equivalentAnalysisToken = token;
     setEquivalentTargets(defaultEquivalentTargets());
 
     try {
-      const features = await analyzePieceFeatures(url, pieceIds, size);
+      const features = await analyzePieceFeatures(url, pieceIds, size, signature);
       if (token === equivalentAnalysisToken && url === currentImageUrl && size === gridSize) {
         setEquivalentTargets(buildEquivalentTargets(pieceIds, features));
       }
@@ -333,13 +334,14 @@
     const generation = hintGeneration;
     const url = currentImageUrl;
     const size = gridSize;
+    const signature = selectedImage()?.signature || '';
 
     hintPieces.set(fallback, 0);
     updateGuideHint();
     setStatus(`已添加 ${hintPieces.size} 个提示`);
     saveState();
 
-    findDetailedHintPieceId(url, pieceIds, size, candidates)
+    findDetailedHintPieceId(url, pieceIds, size, candidates, signature)
       .then((entry) => {
         if (generation !== hintGeneration || url !== currentImageUrl || size !== gridSize || !entry) {
           return;

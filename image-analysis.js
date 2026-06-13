@@ -1,4 +1,24 @@
 (function () {
+  const featureCache = new Map();
+  const hintScoreCache = new Map();
+  const cacheStats = {
+    featureReads: 0,
+    featureHits: 0,
+    hintReads: 0,
+    hintHits: 0,
+  };
+
+  function cacheKey(url, pieceIds, size, cacheSalt = '') {
+    return `${url}|${cacheSalt}|${size}|${pieceIds.join(',')}`;
+  }
+
+  function cloneFeature(feature) {
+    return {
+      ...feature,
+      pixels: [...feature.pixels],
+    };
+  }
+
   function parsePieceId(pieceId) {
     const [, row, col] = pieceId.match(/^piece-(\d+)-(\d+)$/) || [];
     return {
@@ -75,7 +95,14 @@
     return targets;
   }
 
-  async function analyzePieceFeatures(url, pieceIds, size) {
+  async function analyzePieceFeatures(url, pieceIds, size, cacheSalt = '') {
+    const key = cacheKey(url, pieceIds, size, cacheSalt);
+    cacheStats.featureReads += 1;
+    if (featureCache.has(key)) {
+      cacheStats.featureHits += 1;
+      return featureCache.get(key).map(cloneFeature);
+    }
+
     const image = await getImageElement(url);
     const sampleSize = 48;
     const canvas = document.createElement('canvas');
@@ -87,7 +114,7 @@
     canvas.height = height;
     context.drawImage(image, 0, 0, width, height);
 
-    return pieceIds.map((pieceId) => {
+    const features = pieceIds.map((pieceId) => {
       const { row, col } = parsePieceId(pieceId);
       const data = context.getImageData(
         col * sampleSize,
@@ -136,63 +163,86 @@
         pixels: pixelsSignature,
       };
     });
+
+    featureCache.set(key, features.map(cloneFeature));
+    return features;
   }
 
-  async function findDetailedHintPieceId(url, pieceIds, size, allowedPieceIds = pieceIds) {
-    const image = await getImageElement(url);
-    const sampleSize = 32;
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    const width = sampleSize * size;
-    const height = sampleSize * size;
+  async function findDetailedHintPieceId(url, pieceIds, size, allowedPieceIds = pieceIds, cacheSalt = '') {
+    const key = cacheKey(url, pieceIds, size, cacheSalt);
+    cacheStats.hintReads += 1;
+    let scores = hintScoreCache.get(key);
+    if (scores) {
+      cacheStats.hintHits += 1;
+    }
 
-    canvas.width = width;
-    canvas.height = height;
-    context.drawImage(image, 0, 0, width, height);
+    if (!scores) {
+      const image = await getImageElement(url);
+      const sampleSize = 32;
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      const width = sampleSize * size;
+      const height = sampleSize * size;
+
+      canvas.width = width;
+      canvas.height = height;
+      context.drawImage(image, 0, 0, width, height);
+
+      scores = pieceIds.map((pieceId) => {
+        const { row, col } = parsePieceId(pieceId);
+        const data = context.getImageData(
+          col * sampleSize,
+          row * sampleSize,
+          sampleSize,
+          sampleSize,
+        ).data;
+        let mean = 0;
+        let meanSquared = 0;
+        let saturation = 0;
+        const pixels = data.length / 4;
+
+        for (let index = 0; index < data.length; index += 4) {
+          const red = data[index];
+          const green = data[index + 1];
+          const blue = data[index + 2];
+          const light = (red + green + blue) / 3;
+          mean += light;
+          meanSquared += light * light;
+          saturation += Math.max(red, green, blue) - Math.min(red, green, blue);
+        }
+
+        mean /= pixels;
+        meanSquared /= pixels;
+
+        return {
+          pieceId,
+          score: Math.sqrt(Math.max(0, meanSquared - mean * mean)) + saturation / pixels / 3,
+        };
+      }).sort((first, second) => second.score - first.score);
+      hintScoreCache.set(key, scores);
+    }
 
     const allowed = new Set(allowedPieceIds);
-    const scores = pieceIds.filter((pieceId) => allowed.has(pieceId)).map((pieceId) => {
-      const { row, col } = parsePieceId(pieceId);
-      const data = context.getImageData(
-        col * sampleSize,
-        row * sampleSize,
-        sampleSize,
-        sampleSize,
-      ).data;
-      let mean = 0;
-      let meanSquared = 0;
-      let saturation = 0;
-      const pixels = data.length / 4;
-
-      for (let index = 0; index < data.length; index += 4) {
-        const red = data[index];
-        const green = data[index + 1];
-        const blue = data[index + 2];
-        const light = (red + green + blue) / 3;
-        mean += light;
-        meanSquared += light * light;
-        saturation += Math.max(red, green, blue) - Math.min(red, green, blue);
-      }
-
-      mean /= pixels;
-      meanSquared /= pixels;
-
-      return {
-        pieceId,
-        score: Math.sqrt(Math.max(0, meanSquared - mean * mean)) + saturation / pixels / 3,
-      };
-    }).sort((first, second) => second.score - first.score);
-
-    const usefulScores = scores.filter((entry) => entry.score > 8);
+    const allowedScores = scores.filter((entry) => allowed.has(entry.pieceId));
+    const usefulScores = allowedScores.filter((entry) => entry.score > 8);
     const candidates = usefulScores.length > 0
       ? usefulScores.slice(0, Math.max(1, Math.ceil(usefulScores.length / 2)))
-      : scores;
-    return candidates[Math.floor(Math.random() * candidates.length)] || scores[0] || null;
+      : allowedScores;
+    return candidates[Math.floor(Math.random() * candidates.length)] || allowedScores[0] || null;
+  }
+
+  function getCacheStats() {
+    return {
+      ...cacheStats,
+      featureEntries: featureCache.size,
+      hintEntries: hintScoreCache.size,
+    };
   }
 
   window.PuppyJigsawImageAnalysis = {
     analyzePieceFeatures,
     buildEquivalentTargets,
+    cacheStats: getCacheStats,
     createDefaultEquivalentTargets,
     findDetailedHintPieceId,
   };
