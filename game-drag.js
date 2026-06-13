@@ -51,6 +51,31 @@
       .sort((a, b) => b.overlapArea - a.overlapArea)[0] || null;
   }
 
+  function getRectOverlapDetails(slot, pieceRect) {
+    const point = {
+      x: pieceRect.left + pieceRect.width / 2,
+      y: pieceRect.top + pieceRect.height / 2,
+    };
+    const details = getSlotDetails(slot, point);
+    const rect = details.rect;
+    const overlapWidth = Math.max(
+      0,
+      Math.min(pieceRect.right, rect.right) - Math.max(pieceRect.left, rect.left),
+    );
+    const overlapHeight = Math.max(
+      0,
+      Math.min(pieceRect.bottom, rect.bottom) - Math.max(pieceRect.top, rect.top),
+    );
+    const overlapArea = overlapWidth * overlapHeight;
+    const slotArea = Math.max(1, rect.width * rect.height);
+
+    return {
+      ...details,
+      overlapArea,
+      overlapRatio: overlapArea / slotArea,
+    };
+  }
+
   function getDropSlot({ correction, slots, point, piece }) {
     if (correction) {
       return getClosestSlot(slots, point);
@@ -130,6 +155,64 @@
     }
 
     return targets;
+  }
+
+  function getBestGroupDrop({
+    drag,
+    slots,
+    correction,
+    gridSize,
+    shiftedTargetId,
+    targetOffset,
+  }) {
+    const slotsByTarget = new Map(slots.map((slot) => [slot.dataset.targetId, slot]));
+    let bestDrop = null;
+
+    for (const activeSlot of slots) {
+      const targets = buildGroupDropTargets({
+        drag,
+        activeTargetId: activeSlot.dataset.targetId,
+        gridSize,
+        shiftedTargetId,
+        targetOffset,
+      });
+
+      if (!targets) {
+        continue;
+      }
+
+      let score = 0;
+      let readyPieces = 0;
+
+      for (const item of drag.dragItems) {
+        const targetId = targets.get(item.pieceId);
+        const slot = slotsByTarget.get(targetId);
+        if (!slot) {
+          score = Number.NEGATIVE_INFINITY;
+          break;
+        }
+
+        const details = getRectOverlapDetails(slot, item.piece.getBoundingClientRect());
+        const ready = isDropReady(details, correction);
+        if (ready) {
+          readyPieces += 1;
+        }
+
+        score += correction
+          ? details.snapThreshold - details.distance
+          : details.overlapRatio * 1000 - details.distance;
+      }
+
+      if (readyPieces !== drag.dragItems.length) {
+        continue;
+      }
+
+      if (!bestDrop || score > bestDrop.score) {
+        bestDrop = { targets, score };
+      }
+    }
+
+    return bestDrop;
   }
 
   function collectGroupBlockers(targets, groupPieceIds, getPlacedPieceAtTarget) {
@@ -256,6 +339,7 @@
     moveDraggedPiecesToPointer,
     prepareDraggingPiece,
     buildGroupDropTargets,
+    getBestGroupDrop,
     buildGroupSwapTargets,
     canPlaceGroup,
   };

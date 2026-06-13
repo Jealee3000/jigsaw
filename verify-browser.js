@@ -417,6 +417,80 @@ async function verifyGlueMode(page) {
   await page.locator('.mode-button[data-mode="correction"]').click();
   await page.locator('.mode-button[data-mode="glue"]').click();
   await assertGrid(page, 2);
+
+  await page.locator('.grid-button[data-grid-size="3"]').click();
+  await assertGrid(page, 3);
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-1-1');
+  await dragPieceToSlot(page, 'piece-0-1', 'piece-1-2');
+  await dragPieceToSlot(page, 'piece-1-0', 'piece-2-1');
+  await dragPieceToSlot(page, 'piece-1-1', 'piece-2-2');
+  await dragPieceToSlotByGrabOffset(page, 'piece-0-0', 'piece-0-0', 0.12, 0.12);
+
+  const cornerDragPlacements = await page.evaluate(() => (
+    Object.fromEntries(
+      Array.from(document.querySelectorAll('.piece.placed')).map((piece) => [
+        piece.dataset.pieceId,
+        piece.dataset.currentTargetId,
+      ]),
+    )
+  ));
+  assert.equal(cornerDragPlacements['piece-0-0'], 'piece-0-0');
+  assert.equal(cornerDragPlacements['piece-0-1'], 'piece-0-1');
+  assert.equal(cornerDragPlacements['piece-1-0'], 'piece-1-0');
+  assert.equal(cornerDragPlacements['piece-1-1'], 'piece-1-1');
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  await page.locator('.grid-button[data-grid-size="2"]').click();
+  await assertGrid(page, 2);
+
+  await page.locator('.grid-button[data-grid-size="4"]').click();
+  await assertGrid(page, 4);
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  for (const source of [
+    ['piece-0-0', 'piece-1-1'],
+    ['piece-0-1', 'piece-1-2'],
+    ['piece-0-2', 'piece-1-3'],
+    ['piece-1-0', 'piece-2-1'],
+    ['piece-1-1', 'piece-2-2'],
+    ['piece-1-2', 'piece-2-3'],
+    ['piece-2-0', 'piece-3-1'],
+    ['piece-2-1', 'piece-3-2'],
+    ['piece-2-2', 'piece-3-3'],
+  ]) {
+    await dragPieceToSlot(page, source[0], source[1]);
+  }
+  await dragPieceToSlotByGrabOffset(page, 'piece-0-0', 'piece-0-0', 0.12, 0.12);
+
+  const largeGroupPlacements = await page.evaluate(() => (
+    Object.fromEntries(
+      Array.from(document.querySelectorAll('.piece.placed')).map((piece) => [
+        piece.dataset.pieceId,
+        piece.dataset.currentTargetId,
+      ]),
+    )
+  ));
+  for (const pieceId of [
+    'piece-0-0',
+    'piece-0-1',
+    'piece-0-2',
+    'piece-1-0',
+    'piece-1-1',
+    'piece-1-2',
+    'piece-2-0',
+    'piece-2-1',
+    'piece-2-2',
+  ]) {
+    assert.equal(largeGroupPlacements[pieceId], pieceId);
+  }
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  await page.locator('.grid-button[data-grid-size="2"]').click();
+  await assertGrid(page, 2);
 }
 
 async function verifyEquivalentPieces(page) {

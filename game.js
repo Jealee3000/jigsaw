@@ -1047,15 +1047,15 @@
     }
 
     if (drag.groupPieceIds?.length > 1) {
-      const groupTargets = closestSlot && Drag.isDropReady(closestSlot, modeState.correction)
-        ? Drag.buildGroupDropTargets({
-          drag,
-          activeTargetId: closestSlot.targetId,
-          gridSize,
-          shiftedTargetId,
-          targetOffset,
-        })
-        : null;
+      const groupDrop = Drag.getBestGroupDrop({
+        drag,
+        slots: getSlots(),
+        correction: modeState.correction,
+        gridSize,
+        shiftedTargetId,
+        targetOffset,
+      });
+      const groupTargets = groupDrop?.targets || null;
       const groupSwapTargets = groupTargets
         ? Drag.buildGroupSwapTargets({
           drag,
