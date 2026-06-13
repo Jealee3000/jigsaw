@@ -17,6 +17,11 @@
     createDefaultEquivalentTargets,
     findDetailedHintPieceId,
   } = window.PuppyJigsawImageAnalysis;
+  const {
+    buildGlueGroups,
+    shiftedTargetId,
+    targetOffset,
+  } = window.PuppyJigsawGlue;
 
   const root = document.documentElement;
   const board = document.querySelector('#board');
@@ -54,9 +59,6 @@
   let equivalentAnalysisToken = 0;
   let pieceGlueIds = new Map();
   let glueMembers = new Map();
-  let autoNextTimer = null;
-  let autoNextInterval = null;
-  const autoNextDelayMs = 4000;
   const modeState = {
     guide: true,
     correction: true,
@@ -64,6 +66,13 @@
     sound: false,
     autoNext: false,
   };
+  const completionFeedback = window.PuppyJigsawCompletion.createCompletionFeedback({
+    countdownElement: completionCountdown,
+    getImageCount: () => imageLibrary.length,
+    getSoundEnabled: () => modeState.sound,
+    getAutoNextEnabled: () => modeState.autoNext,
+    goToNextImage: () => goToNextImage(),
+  });
 
   function getFallbackImageUrl() {
     const svg = `
@@ -892,7 +901,7 @@
         return null;
       }
 
-      const targetId = shiftedTargetId(item.originTargetId, offset);
+      const targetId = shiftedTargetId(item.originTargetId, offset, gridSize);
       if (!targetId || targets.has(targetId)) {
         return null;
       }
@@ -980,80 +989,14 @@
     });
   }
 
-  function clearAutoNextTimer() {
-    if (autoNextTimer) {
-      window.clearTimeout(autoNextTimer);
-      autoNextTimer = null;
-    }
-
-    if (autoNextInterval) {
-      window.clearInterval(autoNextInterval);
-      autoNextInterval = null;
-    }
-
-    completionCountdown.hidden = true;
-    completionCountdown.textContent = '';
-  }
-
-  function playCompletionSound() {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!modeState.sound || !AudioContextClass) {
-      return;
-    }
-
-    try {
-      const context = new AudioContextClass();
-      const gain = context.createGain();
-      gain.gain.setValueAtTime(0.0001, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.55);
-      gain.connect(context.destination);
-
-      [523.25, 659.25, 783.99].forEach((frequency, index) => {
-        const oscillator = context.createOscillator();
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(frequency, context.currentTime + index * 0.08);
-        oscillator.connect(gain);
-        oscillator.start(context.currentTime + index * 0.08);
-        oscillator.stop(context.currentTime + 0.52);
-      });
-
-      window.setTimeout(() => context.close(), 700);
-    } catch (error) {
-      // Audio is optional and may be blocked by the browser.
-    }
-  }
-
-  function scheduleAutoNext() {
-    clearAutoNextTimer();
-
-    if (!modeState.autoNext || imageLibrary.length < 2) {
-      return;
-    }
-
-    const startedAt = Date.now();
-    const updateCountdown = () => {
-      const remainingSeconds = Math.max(1, Math.ceil((autoNextDelayMs - (Date.now() - startedAt)) / 1000));
-      completionCountdown.hidden = false;
-      completionCountdown.textContent = `${remainingSeconds} 秒后下一张`;
-    };
-
-    updateCountdown();
-    autoNextInterval = window.setInterval(updateCountdown, 250);
-    autoNextTimer = window.setTimeout(() => {
-      clearAutoNextTimer();
-      goToNextImage();
-    }, autoNextDelayMs);
-  }
-
   function showCelebrationIfComplete() {
     if (isPuzzleSolved()) {
       board.classList.add('solved');
       renderImageLibrary();
       if (!completionDismissed) {
         celebration.hidden = false;
-        playCompletionSound();
-        scheduleAutoNext();
+        completionFeedback.playSound();
+        completionFeedback.scheduleAutoNext();
         window.setTimeout(() => nextImageButton.focus(), 0);
       }
       return true;
@@ -1064,7 +1007,7 @@
   }
 
   function hideCelebration() {
-    clearAutoNextTimer();
+    completionFeedback.clear();
     celebration.hidden = true;
     completionDismissed = true;
     saveState();
@@ -1080,7 +1023,7 @@
     const currentIndex = Math.max(0, imageLibrary.findIndex((image) => image.name === currentName));
     const nextImage = imageLibrary[(currentIndex + 1) % imageLibrary.length];
 
-    clearAutoNextTimer();
+    completionFeedback.clear();
     celebration.hidden = true;
     completionDismissed = true;
     saveState();
@@ -1103,7 +1046,7 @@
     piece.placed = false;
     piece.currentTargetId = null;
     board.classList.remove('solved');
-    clearAutoNextTimer();
+    completionFeedback.clear();
     updateSlotOccupancy();
     renderImageLibrary();
   }
@@ -1187,52 +1130,6 @@
     }
   }
 
-  function targetOffset(firstTargetId, secondTargetId) {
-    const first = parsePieceId(firstTargetId);
-    const second = parsePieceId(secondTargetId);
-    return {
-      row: second.row - first.row,
-      col: second.col - first.col,
-    };
-  }
-
-  function isAdjacentOffset(offset) {
-    return Math.abs(offset.row) + Math.abs(offset.col) === 1;
-  }
-
-  function shiftedTargetId(targetId, offset) {
-    const { row, col } = parsePieceId(targetId);
-    const nextRow = row + offset.row;
-    const nextCol = col + offset.col;
-
-    if (nextRow < 0 || nextCol < 0 || nextRow >= gridSize || nextCol >= gridSize) {
-      return null;
-    }
-
-    return `piece-${nextRow}-${nextCol}`;
-  }
-
-  function shouldGluePieces(firstPieceId, secondPieceId) {
-    const firstPiece = gameState.pieces[firstPieceId];
-    const secondPiece = gameState.pieces[secondPieceId];
-
-    if (
-      firstPiece?.placed !== true
-      || secondPiece?.placed !== true
-      || !firstPiece.currentTargetId
-      || !secondPiece.currentTargetId
-    ) {
-      return false;
-    }
-
-    const originalOffset = targetOffset(firstPiece.targetId, secondPiece.targetId);
-    const currentOffset = targetOffset(firstPiece.currentTargetId, secondPiece.currentTargetId);
-
-    return isAdjacentOffset(originalOffset)
-      && originalOffset.row === currentOffset.row
-      && originalOffset.col === currentOffset.col;
-  }
-
   function recomputeGlueGroups() {
     clearGlueGroups();
 
@@ -1240,45 +1137,8 @@
       return;
     }
 
-    const parent = Object.fromEntries(pieceIds.map((pieceId) => [pieceId, pieceId]));
-    const find = (pieceId) => {
-      if (parent[pieceId] !== pieceId) {
-        parent[pieceId] = find(parent[pieceId]);
-      }
-      return parent[pieceId];
-    };
-    const union = (firstPieceId, secondPieceId) => {
-      const firstRoot = find(firstPieceId);
-      const secondRoot = find(secondPieceId);
-      if (firstRoot !== secondRoot) {
-        parent[secondRoot] = firstRoot;
-      }
-    };
-
-    for (let firstIndex = 0; firstIndex < pieceIds.length; firstIndex += 1) {
-      for (let secondIndex = firstIndex + 1; secondIndex < pieceIds.length; secondIndex += 1) {
-        if (shouldGluePieces(pieceIds[firstIndex], pieceIds[secondIndex])) {
-          union(pieceIds[firstIndex], pieceIds[secondIndex]);
-        }
-      }
-    }
-
-    const groups = new Map();
-    for (const pieceId of pieceIds) {
-      if (gameState.pieces[pieceId]?.placed !== true) {
-        continue;
-      }
-
-      const rootId = find(pieceId);
-      groups.set(rootId, [...(groups.get(rootId) || []), pieceId]);
-    }
-
     let groupIndex = 0;
-    for (const members of groups.values()) {
-      if (members.length < 2) {
-        continue;
-      }
-
+    for (const members of buildGlueGroups(pieceIds, gameState.pieces)) {
       const glueId = `glue-${groupIndex}`;
       groupIndex += 1;
       glueMembers.set(glueId, members);
@@ -1603,9 +1463,9 @@
 
     if (mode === 'autoNext') {
       if (modeState.autoNext && !celebration.hidden && isPuzzleSolved()) {
-        scheduleAutoNext();
+        completionFeedback.scheduleAutoNext();
       } else {
-        clearAutoNextTimer();
+        completionFeedback.clear();
       }
     }
 
@@ -1616,7 +1476,7 @@
     }
 
     saveState();
-    setStatus(modeState[mode] ? `已开启${event.currentTarget.textContent}` : `已隐藏${event.currentTarget.textContent}`);
+    setStatus(modeState[mode] ? `已开启 ${event.currentTarget.textContent}` : `已关闭 ${event.currentTarget.textContent}`);
   }
 
   function resetGame(options = {}) {
@@ -1624,7 +1484,7 @@
     activeDrag = null;
     completionDismissed = false;
     board.classList.remove('solved');
-    clearAutoNextTimer();
+    completionFeedback.clear();
     clearHints();
     clearReadySlots();
     celebration.hidden = true;
@@ -1729,3 +1589,4 @@
   updateProgress();
   loadImageLibrary();
 })();
+
