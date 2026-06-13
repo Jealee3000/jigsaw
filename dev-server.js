@@ -71,10 +71,14 @@ function listImages() {
     .filter((fileName) => fileName !== '.gitkeep')
     .filter((fileName) => types[path.extname(fileName).toLowerCase()]?.startsWith('image/'))
     .sort((a, b) => a.localeCompare(b, 'zh-CN'))
-    .map((fileName) => ({
-      name: fileName,
-      url: `/images/${encodeURIComponent(fileName)}`,
-    }));
+    .map((fileName) => {
+      const stat = fs.statSync(path.join(imagesDir, fileName));
+      return {
+        name: fileName,
+        url: `/images/${encodeURIComponent(fileName)}`,
+        signature: `${stat.size}-${Math.floor(stat.mtimeMs)}`,
+      };
+    });
 }
 
 function collectBody(req) {
@@ -150,12 +154,10 @@ async function handleImageUpload(req, res) {
 
     const { fileName, filePath } = uniqueImagePath(cleanName);
     fs.writeFileSync(filePath, upload.data);
+    const images = listImages();
     sendJson(res, 201, {
-      image: {
-        name: fileName,
-        url: `/images/${encodeURIComponent(fileName)}`,
-      },
-      images: listImages(),
+      image: images.find((image) => image.name === fileName),
+      images,
     });
   } catch (error) {
     if (error.message === 'UPLOAD_TOO_LARGE') {

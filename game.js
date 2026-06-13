@@ -123,6 +123,10 @@
     return imageLibrary.find((image) => image.url === currentImageUrl)?.name || null;
   }
 
+  function selectedImage() {
+    return imageLibrary.find((image) => image.url === currentImageUrl) || null;
+  }
+
   function orderedPieceIds(ids) {
     const valid = new Set(pieceIds);
     const ordered = ids.filter((pieceId) => valid.has(pieceId));
@@ -143,6 +147,7 @@
   function serializeCurrentImageState() {
     return {
       gridSize,
+      imageSignature: selectedImage()?.signature || null,
       trayPieceIds,
       modeState: {
         guide: modeState.guide,
@@ -156,6 +161,29 @@
       completionDismissed,
       solved: isPuzzleSolved(),
     };
+  }
+
+  function cleanSavedDataForLibrary() {
+    const saved = readSavedData();
+    const imagesByName = new Map(imageLibrary.map((image) => [image.name, image]));
+    let changed = false;
+
+    for (const [imageName, imageState] of Object.entries(saved.imageStates || {})) {
+      const image = imagesByName.get(imageName);
+      if (!image || imageState?.imageSignature !== image.signature) {
+        delete saved.imageStates[imageName];
+        changed = true;
+      }
+    }
+
+    if (saved.currentImageName && !imagesByName.has(saved.currentImageName)) {
+      saved.currentImageName = null;
+      changed = true;
+    }
+
+    if (changed) {
+      writeSavedData(saved);
+    }
   }
 
   function saveState() {
@@ -444,6 +472,7 @@
       }
 
       imageLibrary = Array.isArray(result.images) ? result.images : [];
+      cleanSavedDataForLibrary();
       renderImageLibrary();
 
       if (await restoreSavedState()) {
@@ -637,6 +666,10 @@
 
   async function restoreImageState(image, saved) {
     if (!image || !saved) {
+      return false;
+    }
+
+    if (saved.imageSignature !== image.signature) {
       return false;
     }
 

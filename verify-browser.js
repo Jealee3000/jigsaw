@@ -487,6 +487,30 @@ async function verifyBrowserPersistence(page) {
   assert.equal(restored.hintCount, 1);
   assert.equal(restored.selectedName, 'browser-test-persist.svg');
 
+  await page.evaluate(() => {
+    const key = 'puppy-jigsaw-state-v2';
+    const saved = JSON.parse(localStorage.getItem(key));
+    saved.imageStates['missing-image.svg'] = {
+      ...saved.imageStates['browser-test-persist.svg'],
+      imageSignature: 'missing',
+    };
+    saved.imageStates['browser-test-persist.svg'].imageSignature = 'outdated';
+    localStorage.setItem(key, JSON.stringify(saved));
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  const cleaned = await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('puppy-jigsaw-state-v2'));
+    return {
+      missing: saved.imageStates['missing-image.svg'] || null,
+      persistSignature: saved.imageStates['browser-test-persist.svg']?.imageSignature || null,
+      progress: document.querySelector('.progress').getAttribute('aria-label'),
+    };
+  });
+
+  assert.equal(cleaned.missing, null);
+  assert.notEqual(cleaned.persistSignature, 'outdated');
+  assert.equal(cleaned.progress, '完成 0 / 4');
+
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'networkidle' });
   await assertGrid(page, 2);
@@ -634,6 +658,7 @@ async function verifyDesktop(page) {
 async function verifyMobile(page) {
   await page.setViewportSize({ width: 390, height: 844 });
   await visitWithEmptyStorage(page);
+  await uploadTestImage(page, 'browser-test-mobile-square.svg', '#cbb7f6', '#58c87a', 420, 420);
   await page.locator('.grid-button[data-grid-size="4"]').click();
 
   const layout = await page.evaluate(() => {
