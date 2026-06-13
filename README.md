@@ -25,6 +25,7 @@
 ├── dev-server.js           # 本地图片服务和静态文件服务
 ├── game.js                 # 游戏主流程
 ├── game-*.js               # 拆分后的游戏模块
+├── game-state.js           # 游戏状态序列化和图片库数据整理
 ├── glue-groups.js          # 粘合组逻辑
 ├── image-analysis.js       # 相似块分析
 ├── verify-browser.js       # 浏览器回归测试
@@ -34,11 +35,13 @@
 
 ## 启动
 
-需要安装 Node.js。项目不需要 `npm install`，直接运行本地服务即可。
+需要安装 Node.js。项目没有运行时依赖，直接运行本地服务即可。
 
 ```powershell
-node dev-server.js
+npm start
 ```
+
+如果 PowerShell 提示 `npm.ps1` 被执行策略阻止，可以把命令里的 `npm` 换成 `npm.cmd`，例如 `npm.cmd start`。
 
 启动后打开：
 
@@ -50,7 +53,7 @@ http://localhost:4173/
 
 ```powershell
 $env:PORT=54887
-node dev-server.js
+npm start
 ```
 
 ## 添加图片
@@ -69,22 +72,26 @@ node dev-server.js
 基础逻辑测试：
 
 ```powershell
-node --test game-logic.test.js
+npm test
 ```
 
 语法检查：
 
 ```powershell
-node --check game.js
-node --check game-drag.js
-node --check verify-browser.js
+npm run check
 ```
 
-浏览器回归测试需要本机可用的 Playwright/Chrome 环境：
+桌面浏览器回归测试需要本机可用的 Playwright/Chrome 环境：
 
 ```powershell
-node verify-browser.js
+npm run verify:desktop
 ```
 
-当前布局以桌面浏览器优先。移动端验证如果在很窄视口下失败，通常需要单独调整移动端布局阈值。
+当前布局以桌面浏览器优先。如需同时跑移动端验证：
+
+```powershell
+npm run verify:all
+```
+
+移动端验证如果在很窄视口下失败，通常需要单独调整移动端布局阈值。
 

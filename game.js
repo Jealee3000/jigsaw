@@ -26,6 +26,7 @@
   const Layout = window.PuppyJigsawDom;
   const Modes = window.PuppyJigsawModes;
   const Library = window.PuppyJigsawLibrary;
+  const State = window.PuppyJigsawState;
 
   const root = document.documentElement;
   const board = document.querySelector('#board');
@@ -47,7 +48,7 @@
 
   let gridSize = 2;
   let pieceIds = createPieceIds(gridSize);
-  let trayPieceIds = shufflePieceIds(pieceIds);
+  let trayPieceIds = State.shufflePieceIds(pieceIds);
   let gameState = createGameState(pieceIds);
   let currentImageUrl = fallbackImageUrl;
   let imageLibrary = [];
@@ -140,68 +141,34 @@
   }
 
   function selectedImageName() {
-    return imageLibrary.find((image) => image.url === currentImageUrl)?.name || null;
+    return State.selectedImageName(imageLibrary, currentImageUrl);
   }
 
   function selectedImage() {
-    return imageLibrary.find((image) => image.url === currentImageUrl) || null;
+    return State.selectedImage(imageLibrary, currentImageUrl);
   }
 
   function orderedPieceIds(ids) {
-    const valid = new Set(pieceIds);
-    const ordered = ids.filter((pieceId) => valid.has(pieceId));
-    const missing = pieceIds.filter((pieceId) => !ordered.includes(pieceId));
-    return [...ordered, ...missing];
-  }
-
-  function serializePieces() {
-    return Object.fromEntries(pieceIds.map((pieceId) => {
-      const piece = gameState.pieces[pieceId];
-      return [pieceId, {
-        placed: piece?.placed === true,
-        currentTargetId: piece?.currentTargetId || null,
-      }];
-    }));
+    return State.orderedPieceIds(pieceIds, ids);
   }
 
   function serializeCurrentImageState() {
-    return {
+    return State.serializeCurrentImageState({
       gridSize,
       imageSignature: selectedImage()?.signature || null,
       trayPieceIds,
-      modeState: {
-        guide: modeState.guide,
-        correction: modeState.correction,
-        glue: modeState.glue,
-        sound: modeState.sound,
-        autoNext: modeState.autoNext,
-      },
-      pieces: serializePieces(),
-      hints: Array.from(hintPieces.keys()),
+      modeState,
+      pieceIds,
+      gameState,
+      hintPieces,
       completionDismissed,
       solved: isPuzzleSolved(),
-    };
+    });
   }
 
   function cleanSavedDataForLibrary() {
     const saved = readSavedData();
-    const imagesByName = new Map(imageLibrary.map((image) => [image.name, image]));
-    let changed = false;
-
-    for (const [imageName, imageState] of Object.entries(saved.imageStates || {})) {
-      const image = imagesByName.get(imageName);
-      if (!image || imageState?.imageSignature !== image.signature) {
-        delete saved.imageStates[imageName];
-        changed = true;
-      }
-    }
-
-    if (saved.currentImageName && !imagesByName.has(saved.currentImageName)) {
-      saved.currentImageName = null;
-      changed = true;
-    }
-
-    if (changed) {
+    if (State.pruneSavedDataForLibrary(saved, imageLibrary)) {
       writeSavedData(saved);
     }
   }
@@ -276,24 +243,8 @@
     }
   }
 
-  function hasSameOrder(first, second) {
-    return first.length === second.length
-      && first.every((item, index) => item === second[index]);
-  }
-
   function shufflePieceIds(ids) {
-    const shuffled = [...ids];
-
-    for (let index = shuffled.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(Math.random() * (index + 1));
-      [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
-    }
-
-    if (shuffled.length > 1 && hasSameOrder(shuffled, ids)) {
-      shuffled.push(shuffled.shift());
-    }
-
-    return shuffled;
+    return State.shufflePieceIds(ids);
   }
 
   function updateModeControls() {

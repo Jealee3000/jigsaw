@@ -6,8 +6,20 @@ const { chromium } = require('playwright');
 const baseUrl = process.env.BASE_URL || 'http://localhost:4173/';
 const screenshotsDir = path.join(__dirname, 'artifacts');
 const imagesDir = path.join(__dirname, 'images');
+const args = new Set(process.argv.slice(2));
+const supportedArgs = new Set(['--desktop', '--mobile', '--all']);
 
 fs.mkdirSync(screenshotsDir, { recursive: true });
+
+for (const arg of args) {
+  if (!supportedArgs.has(arg)) {
+    throw new Error(`Unsupported argument: ${arg}`);
+  }
+}
+
+const runAll = args.has('--all');
+const runMobile = runAll || args.has('--mobile');
+const runDesktop = runAll || args.has('--desktop') || !runMobile;
 
 function cleanupBrowserTestImages() {
   if (!fs.existsSync(imagesDir)) {
@@ -1006,13 +1018,20 @@ async function verifyMobile(page) {
   });
 
   try {
-    await verifyDesktop(page);
-    await verifyMobile(page);
+    if (runDesktop) {
+      await verifyDesktop(page);
+    }
+    if (runMobile) {
+      await verifyMobile(page);
+    }
     assert.deepEqual(consoleErrors, []);
   } finally {
     await browser.close();
     cleanupBrowserTestImages();
   }
 
-  console.log('browser verification passed');
+  console.log(`browser verification passed (${[
+    runDesktop ? 'desktop' : null,
+    runMobile ? 'mobile' : null,
+  ].filter(Boolean).join(', ')})`);
 })();

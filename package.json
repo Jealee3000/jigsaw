@@ -1,0 +1,16 @@
+{
+  "name": "puppy-jigsaw",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A local browser jigsaw puzzle game for children.",
+  "scripts": {
+    "start": "node dev-server.js",
+    "check": "node --check completion-feedback.js && node --check dev-server.js && node --check game-dom.js && node --check game-drag.js && node --check game-library.js && node --check game-logic.js && node --check game-modes.js && node --check game-state.js && node --check game-storage.js && node --check game.js && node --check glue-groups.js && node --check image-analysis.js && node --check verify-browser.js",
+    "test": "node --test game-logic.test.js",
+    "verify:desktop": "node verify-browser.js --desktop",
+    "verify:all": "node verify-browser.js --all"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
