@@ -14,7 +14,8 @@
   const tray = document.querySelector('#tray');
   const progress = document.querySelector('.progress');
   const resetButton = document.querySelector('#reset-button');
-  const replayButton = document.querySelector('#replay-button');
+  const seeAgainButton = document.querySelector('#see-again-button');
+  const nextImageButton = document.querySelector('#next-image-button');
   const celebration = document.querySelector('#celebration');
   const imageInput = document.querySelector('#image-input');
   const imageList = document.querySelector('#image-list');
@@ -23,7 +24,7 @@
   const modeButtons = Array.from(document.querySelectorAll('.mode-button'));
   const suppressedClicks = new WeakSet();
   const fallbackImageUrl = getFallbackImageUrl();
-  const storageKey = 'puppy-jigsaw-state-v1';
+  const storageKey = 'puppy-jigsaw-state-v2';
 
   let gridSize = 2;
   let pieceIds = createPieceIds(gridSize);
@@ -38,11 +39,15 @@
   const hintPieces = new Map();
   let hintGeneration = 0;
   let isRestoringState = false;
+  let completionDismissed = false;
   let equivalentTargets = {};
   let equivalentAnalysisToken = 0;
+  let pieceGlueIds = new Map();
+  let glueMembers = new Map();
   const modeState = {
     guide: true,
     correction: true,
+    glue: false,
   };
 
   function getFallbackImageUrl() {
@@ -99,21 +104,31 @@
     statusMessage.textContent = message;
   }
 
-  function readSavedState() {
+  function createEmptyStorageState() {
+    return {
+      version: 2,
+      currentImageName: null,
+      imageStates: {},
+    };
+  }
+
+  function readSavedData() {
     try {
       const raw = window.localStorage.getItem(storageKey);
       if (!raw) {
-        return null;
+        return createEmptyStorageState();
       }
 
       const saved = JSON.parse(raw);
-      return saved?.version === 1 ? saved : null;
+      return saved?.version === 2 && saved.imageStates
+        ? saved
+        : createEmptyStorageState();
     } catch (error) {
-      return null;
+      return createEmptyStorageState();
     }
   }
 
-  function writeSavedState(saved) {
+  function writeSavedData(saved) {
     try {
       window.localStorage.setItem(storageKey, JSON.stringify(saved));
     } catch (error) {
@@ -142,23 +157,35 @@
     }));
   }
 
-  function saveState() {
-    if (isRestoringState) {
-      return;
-    }
-
-    writeSavedState({
-      version: 1,
-      imageName: selectedImageName(),
+  function serializeCurrentImageState() {
+    return {
       gridSize,
       trayPieceIds,
       modeState: {
         guide: modeState.guide,
         correction: modeState.correction,
+        glue: modeState.glue,
       },
       pieces: serializePieces(),
       hints: Array.from(hintPieces.keys()),
-    });
+      completionDismissed,
+    };
+  }
+
+  function saveState() {
+    if (isRestoringState) {
+      return;
+    }
+
+    const imageName = selectedImageName();
+    const saved = readSavedData();
+    saved.currentImageName = imageName;
+
+    if (imageName) {
+      saved.imageStates[imageName] = serializeCurrentImageState();
+    }
+
+    writeSavedData(saved);
   }
 
   function defaultEquivalentTargets() {
@@ -238,6 +265,7 @@
   function updateModeControls() {
     board.classList.toggle('hide-guide', !modeState.guide);
     root.classList.toggle('free-placement', !modeState.correction);
+    root.classList.toggle('glue-mode', modeState.glue);
 
     for (const button of modeButtons) {
       const isActive = Boolean(modeState[button.dataset.mode]);
@@ -557,10 +585,26 @@
       return;
     }
 
-    await setCurrentImage(image.url);
-    clearHints();
+    if (!options.skipSave) {
+      saveState();
+    }
+
+    const saved = readSavedData();
+    const imageState = saved.imageStates?.[image.name];
+    const restored = imageState
+      ? await restoreImageState(image, imageState)
+      : false;
+
+    if (!restored) {
+      await setCurrentImage(image.url);
+      clearHints();
+      completionDismissed = false;
+      renderImageLibrary();
+      resetGame({ preserveFocus: true });
+    }
+
     renderImageLibrary();
-    resetGame({ preserveFocus: true });
+    saveState();
 
     if (!options.silent) {
       setStatus(`已选择 ${image.name}`);
@@ -755,19 +799,13 @@
     });
   }
 
-  async function restoreSavedState() {
-    const saved = readSavedState();
-    if (!saved) {
+  async function restoreImageState(image, saved) {
+    if (!image || !saved) {
       return false;
     }
 
     const savedGridSize = Number(saved.gridSize);
     if (![2, 3, 4].includes(savedGridSize)) {
-      return false;
-    }
-
-    const image = imageLibrary.find((candidate) => candidate.name === saved.imageName);
-    if (!image) {
       return false;
     }
 
@@ -779,6 +817,8 @@
     gameState = resetGameState(pieceIds);
     modeState.guide = saved.modeState?.guide !== false;
     modeState.correction = saved.modeState?.correction !== false;
+    modeState.glue = saved.modeState?.glue === true;
+    completionDismissed = saved.completionDismissed === true;
     hintPieces.clear();
     hintGeneration += 1;
 
@@ -817,10 +857,20 @@
 
     updateGuideHint();
     updateProgress();
+    recomputeGlueGroups();
     showCelebrationIfComplete();
     isRestoringState = false;
-    saveState();
     return true;
+  }
+
+  async function restoreSavedState() {
+    const saved = readSavedData();
+    const image = imageLibrary.find((candidate) => candidate.name === saved.currentImageName);
+    if (!image) {
+      return false;
+    }
+
+    return restoreImageState(image, saved.imageStates?.[image.name]);
   }
 
   function getSnapThreshold(slotRect) {
@@ -938,6 +988,98 @@
     piece.style.top = `${clientY - offsetY}px`;
   }
 
+  function moveDraggedPiecesToPointer(clientX, clientY) {
+    if (!activeDrag?.dragItems) {
+      movePieceToPointer(activeDrag.piece, clientX, clientY);
+      return;
+    }
+
+    for (const item of activeDrag.dragItems) {
+      item.piece.style.left = `${clientX - item.offsetX}px`;
+      item.piece.style.top = `${clientY - item.offsetY}px`;
+    }
+  }
+
+  function prepareDraggingPiece(item) {
+    item.piece.style.setProperty('--drag-width', `${item.width}px`);
+    item.piece.style.setProperty('--drag-height', `${item.height}px`);
+    item.piece.classList.add('dragging');
+  }
+
+  function buildGroupDropTargets(drag, activeTargetId) {
+    if (!drag.originTargetId || !activeTargetId) {
+      return null;
+    }
+
+    const offset = targetOffset(drag.originTargetId, activeTargetId);
+    const targets = new Map();
+
+    for (const item of drag.dragItems) {
+      if (!item.originTargetId) {
+        return null;
+      }
+
+      const targetId = shiftedTargetId(item.originTargetId, offset);
+      if (!targetId || targets.has(targetId)) {
+        return null;
+      }
+
+      targets.set(item.pieceId, targetId);
+    }
+
+    return targets;
+  }
+
+  function canPlaceGroup(targets, groupPieceIds) {
+    const groupSet = new Set(groupPieceIds);
+
+    for (const [pieceId, targetId] of targets.entries()) {
+      if (!getSlotByTargetId(targetId)) {
+        return false;
+      }
+
+      const occupiedPiece = getPlacedPieceAtTarget(targetId, pieceId);
+      if (occupiedPiece && !groupSet.has(occupiedPiece.dataset.pieceId)) {
+        return false;
+      }
+
+      if (
+        modeState.correction
+        && !isTargetAccepted(gameState.pieces[pieceId], targetId, equivalentTargets)
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function placeDraggedGroup(drag, targets) {
+    for (const [pieceId, targetId] of targets.entries()) {
+      const item = drag.dragItems.find((candidate) => candidate.pieceId === pieceId);
+      const slot = getSlotByTargetId(targetId);
+      if (!item || !slot) {
+        continue;
+      }
+
+      markPiecePlaced(pieceId, targetId);
+      placePiece(item.piece, slot);
+    }
+  }
+
+  function restoreDraggedGroup(drag) {
+    for (const item of drag.dragItems || []) {
+      const slot = getSlotByTargetId(item.originTargetId);
+      if (slot) {
+        markPiecePlaced(item.pieceId, item.originTargetId);
+        placePiece(item.piece, slot);
+      } else {
+        markPieceLoose(item.pieceId);
+        setPieceLoose(item.piece);
+      }
+    }
+  }
+
   function updateProgress() {
     progress.textContent = `${gameState.placedCount} / ${pieceIds.length}`;
     progress.setAttribute('aria-label', `完成 ${gameState.placedCount} / ${pieceIds.length}`);
@@ -967,12 +1109,37 @@
 
   function showCelebrationIfComplete() {
     if (isPuzzleSolved()) {
-      celebration.hidden = false;
-      window.setTimeout(() => replayButton.focus(), 0);
+      if (!completionDismissed) {
+        celebration.hidden = false;
+        window.setTimeout(() => nextImageButton.focus(), 0);
+      }
       return true;
     }
 
     return false;
+  }
+
+  function hideCelebration() {
+    celebration.hidden = true;
+    completionDismissed = true;
+    saveState();
+  }
+
+  async function goToNextImage() {
+    if (imageLibrary.length === 0) {
+      hideCelebration();
+      return;
+    }
+
+    const currentName = selectedImageName();
+    const currentIndex = Math.max(0, imageLibrary.findIndex((image) => image.name === currentName));
+    const nextImage = imageLibrary[(currentIndex + 1) % imageLibrary.length];
+
+    completionDismissed = false;
+    celebration.hidden = true;
+    saveState();
+    await selectLibraryImage(nextImage, { silent: true });
+    setStatus(`下一张 ${nextImage.name}`);
   }
 
   function markPieceLoose(pieceId) {
@@ -1059,6 +1226,125 @@
     return getSlots().find((slot) => slot.dataset.targetId === targetId) || null;
   }
 
+  function clearGlueGroups() {
+    pieceGlueIds = new Map();
+    glueMembers = new Map();
+    for (const piece of getPieces()) {
+      piece.classList.remove('glued');
+      piece.removeAttribute('data-glue-id');
+    }
+  }
+
+  function targetOffset(firstTargetId, secondTargetId) {
+    const first = parsePieceId(firstTargetId);
+    const second = parsePieceId(secondTargetId);
+    return {
+      row: second.row - first.row,
+      col: second.col - first.col,
+    };
+  }
+
+  function isAdjacentOffset(offset) {
+    return Math.abs(offset.row) + Math.abs(offset.col) === 1;
+  }
+
+  function shiftedTargetId(targetId, offset) {
+    const { row, col } = parsePieceId(targetId);
+    const nextRow = row + offset.row;
+    const nextCol = col + offset.col;
+
+    if (nextRow < 0 || nextCol < 0 || nextRow >= gridSize || nextCol >= gridSize) {
+      return null;
+    }
+
+    return `piece-${nextRow}-${nextCol}`;
+  }
+
+  function shouldGluePieces(firstPieceId, secondPieceId) {
+    const firstPiece = gameState.pieces[firstPieceId];
+    const secondPiece = gameState.pieces[secondPieceId];
+
+    if (
+      firstPiece?.placed !== true
+      || secondPiece?.placed !== true
+      || !firstPiece.currentTargetId
+      || !secondPiece.currentTargetId
+    ) {
+      return false;
+    }
+
+    const originalOffset = targetOffset(firstPiece.targetId, secondPiece.targetId);
+    const currentOffset = targetOffset(firstPiece.currentTargetId, secondPiece.currentTargetId);
+
+    return isAdjacentOffset(originalOffset)
+      && originalOffset.row === currentOffset.row
+      && originalOffset.col === currentOffset.col;
+  }
+
+  function recomputeGlueGroups() {
+    clearGlueGroups();
+
+    if (!modeState.glue) {
+      return;
+    }
+
+    const parent = Object.fromEntries(pieceIds.map((pieceId) => [pieceId, pieceId]));
+    const find = (pieceId) => {
+      if (parent[pieceId] !== pieceId) {
+        parent[pieceId] = find(parent[pieceId]);
+      }
+      return parent[pieceId];
+    };
+    const union = (firstPieceId, secondPieceId) => {
+      const firstRoot = find(firstPieceId);
+      const secondRoot = find(secondPieceId);
+      if (firstRoot !== secondRoot) {
+        parent[secondRoot] = firstRoot;
+      }
+    };
+
+    for (let firstIndex = 0; firstIndex < pieceIds.length; firstIndex += 1) {
+      for (let secondIndex = firstIndex + 1; secondIndex < pieceIds.length; secondIndex += 1) {
+        if (shouldGluePieces(pieceIds[firstIndex], pieceIds[secondIndex])) {
+          union(pieceIds[firstIndex], pieceIds[secondIndex]);
+        }
+      }
+    }
+
+    const groups = new Map();
+    for (const pieceId of pieceIds) {
+      if (gameState.pieces[pieceId]?.placed !== true) {
+        continue;
+      }
+
+      const rootId = find(pieceId);
+      groups.set(rootId, [...(groups.get(rootId) || []), pieceId]);
+    }
+
+    let groupIndex = 0;
+    for (const members of groups.values()) {
+      if (members.length < 2) {
+        continue;
+      }
+
+      const glueId = `glue-${groupIndex}`;
+      groupIndex += 1;
+      glueMembers.set(glueId, members);
+
+      for (const pieceId of members) {
+        const piece = document.querySelector(`.piece[data-piece-id="${pieceId}"]`);
+        pieceGlueIds.set(pieceId, glueId);
+        piece?.classList.add('glued');
+        piece?.setAttribute('data-glue-id', glueId);
+      }
+    }
+  }
+
+  function getDragGroupPieceIds(pieceId) {
+    const glueId = pieceGlueIds.get(pieceId);
+    return glueId ? [...(glueMembers.get(glueId) || [pieceId])] : [pieceId];
+  }
+
   function moveBlockingPiece(blockingPiece, drag) {
     const blockingPieceId = blockingPiece.dataset.pieceId;
 
@@ -1105,14 +1391,35 @@
       return;
     }
 
-    if (gameState.pieces[pieceId]?.placed && modeState.correction) {
+    const groupPieceIds = getDragGroupPieceIds(pieceId);
+    if (gameState.pieces[pieceId]?.placed && modeState.correction && groupPieceIds.length < 2) {
       return;
     }
 
+    const dragItems = groupPieceIds.map((groupPieceId) => {
+      const groupPiece = document.querySelector(`.piece[data-piece-id="${groupPieceId}"]`);
+      if (!groupPiece) {
+        return null;
+      }
+
+      const rect = groupPiece.getBoundingClientRect();
+
+      return {
+        piece: groupPiece,
+        pieceId: groupPieceId,
+        originTargetId: groupPiece.dataset.currentTargetId || gameState.pieces[groupPieceId]?.currentTargetId || null,
+        width: rect.width,
+        height: rect.height,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top,
+      };
+    }).filter(Boolean);
     const rect = piece.getBoundingClientRect();
     activeDrag = {
       piece,
       pieceId,
+      groupPieceIds,
+      dragItems,
       wasPlaced: Boolean(gameState.pieces[pieceId]?.placed),
       originTargetId: piece.dataset.currentTargetId || gameState.pieces[pieceId]?.currentTargetId || null,
       pointerId: event.pointerId,
@@ -1126,12 +1433,12 @@
     };
 
     event.preventDefault();
-    markPieceLoose(pieceId);
+    for (const item of dragItems) {
+      markPieceLoose(item.pieceId);
+      prepareDraggingPiece(item);
+    }
     piece.setPointerCapture(event.pointerId);
-    piece.style.setProperty('--drag-width', `${rect.width}px`);
-    piece.style.setProperty('--drag-height', `${rect.height}px`);
-    piece.classList.add('dragging');
-    movePieceToPointer(piece, event.clientX, event.clientY);
+    moveDraggedPiecesToPointer(event.clientX, event.clientY);
     setReadySlot(getDropSlot({ x: event.clientX, y: event.clientY }, piece));
   }
 
@@ -1143,7 +1450,7 @@
     event.preventDefault();
     activeDrag.didMove = activeDrag.didMove
       || Math.hypot(event.clientX - activeDrag.startX, event.clientY - activeDrag.startY) > 6;
-    movePieceToPointer(activeDrag.piece, event.clientX, event.clientY);
+    moveDraggedPiecesToPointer(event.clientX, event.clientY);
     setReadySlot(getDropSlot({ x: event.clientX, y: event.clientY }, activeDrag.piece));
   }
 
@@ -1154,7 +1461,7 @@
 
     const drag = activeDrag;
     const point = { x: event.clientX, y: event.clientY };
-    movePieceToPointer(drag.piece, event.clientX, event.clientY);
+    moveDraggedPiecesToPointer(event.clientX, event.clientY);
     const closestSlot = getDropSlot(point, drag.piece);
     const occupiedSlotPiece = closestSlot
       ? getPlacedPieceAtTarget(closestSlot.targetId, drag.pieceId)
@@ -1178,6 +1485,27 @@
       suppressedClicks.add(drag.piece);
     }
 
+    if (drag.groupPieceIds?.length > 1) {
+      const groupTargets = closestSlot && isDropReady(closestSlot)
+        ? buildGroupDropTargets(drag, closestSlot.targetId)
+        : null;
+
+      if (groupTargets && canPlaceGroup(groupTargets, drag.groupPieceIds)) {
+        placeDraggedGroup(drag, groupTargets);
+        updateProgress();
+        recomputeGlueGroups();
+        showCelebrationIfComplete();
+        saveState();
+        return;
+      }
+
+      restoreDraggedGroup(drag);
+      updateProgress();
+      recomputeGlueGroups();
+      saveState();
+      return;
+    }
+
     if (
       !modeState.correction
       && closestSlot
@@ -1190,6 +1518,7 @@
       markPiecePlaced(drag.pieceId, closestSlot.targetId);
       placePiece(drag.piece, closestSlot.slot);
       updateProgress();
+      recomputeGlueGroups();
       showCelebrationIfComplete();
       saveState();
       return;
@@ -1199,12 +1528,14 @@
       gameState = nextState;
       placePiece(drag.piece, closestSlot.slot);
       updateProgress();
+      recomputeGlueGroups();
       showCelebrationIfComplete();
       saveState();
       return;
     }
 
     setPieceLoose(drag.piece);
+    recomputeGlueGroups();
     saveState();
     if (!drag.didMove) {
       placePieceByActivation(drag.piece);
@@ -1218,7 +1549,14 @@
 
     releasePointerCapture(activeDrag.piece, event.pointerId);
     suppressedClicks.add(activeDrag.piece);
-    returnActivePieceToTray();
+    if (activeDrag.groupPieceIds?.length > 1) {
+      restoreDraggedGroup(activeDrag);
+      activeDrag = null;
+      clearReadySlots();
+    } else {
+      returnActivePieceToTray();
+    }
+    recomputeGlueGroups();
     saveState();
   }
 
@@ -1253,6 +1591,7 @@
     gameState = nextState;
     placePiece(piece, slot);
     updateProgress();
+    recomputeGlueGroups();
 
     if (!showCelebrationIfComplete()) {
       focusFirstLoosePiece();
@@ -1308,6 +1647,7 @@
     modeState[mode] = !modeState[mode];
     updateModeControls();
     updateGuideHint();
+    recomputeGlueGroups();
 
     if (mode === 'correction') {
       resetGame({ preserveFocus: true });
@@ -1322,11 +1662,13 @@
   function resetGame(options = {}) {
     gameState = resetGameState(pieceIds);
     activeDrag = null;
+    completionDismissed = false;
     clearHints();
     clearReadySlots();
     celebration.hidden = true;
     renderPuzzle();
     updateProgress();
+    recomputeGlueGroups();
     saveState();
 
     if (!options.preserveFocus) {
@@ -1343,6 +1685,7 @@
     gridSize = size;
     pieceIds = createPieceIds(gridSize);
     trayPieceIds = shufflePieceIds(pieceIds);
+    completionDismissed = false;
     clearHints();
     setGridVariables();
     updateGridButtons();
@@ -1404,7 +1747,8 @@
 
   imageInput.addEventListener('change', onImageChange);
   resetButton.addEventListener('click', () => resetGame());
-  replayButton.addEventListener('click', () => resetGame());
+  seeAgainButton.addEventListener('click', hideCelebration);
+  nextImageButton.addEventListener('click', goToNextImage);
 
   if ('ResizeObserver' in window) {
     resizeObserver = new ResizeObserver(syncLoosePieceSize);

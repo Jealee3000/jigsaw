@@ -305,6 +305,49 @@ async function verifyFreePlacementBoardSwap(page) {
   await assertGrid(page, 2);
 }
 
+async function verifyGlueMode(page) {
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-0-0');
+  await dragPieceToSlot(page, 'piece-0-1', 'piece-0-1');
+
+  let glueState = await page.evaluate(() => ({
+    gluedPieces: document.querySelectorAll('.piece.glued').length,
+    glueIds: Array.from(
+      new Set(Array.from(document.querySelectorAll('.piece.glued')).map((piece) => piece.dataset.glueId)),
+    ).filter(Boolean),
+  }));
+  assert.equal(glueState.gluedPieces, 2);
+  assert.equal(glueState.glueIds.length, 1);
+
+  await dragPieceToSlot(page, 'piece-0-1', 'piece-1-1');
+
+  const placements = await page.evaluate(() => (
+    Object.fromEntries(
+      Array.from(document.querySelectorAll('.piece.placed')).map((piece) => [
+        piece.dataset.pieceId,
+        piece.dataset.currentTargetId,
+      ]),
+    )
+  ));
+  assert.equal(placements['piece-0-0'], 'piece-1-0');
+  assert.equal(placements['piece-0-1'], 'piece-1-1');
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 2 / 4');
+
+  glueState = await page.evaluate(() => ({
+    gluedPieces: document.querySelectorAll('.piece.glued').length,
+    glueIds: Array.from(
+      new Set(Array.from(document.querySelectorAll('.piece.glued')).map((piece) => piece.dataset.glueId)),
+    ).filter(Boolean),
+  }));
+  assert.equal(glueState.gluedPieces, 2);
+  assert.equal(glueState.glueIds.length, 1);
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  await assertGrid(page, 2);
+}
+
 async function verifyEquivalentPieces(page) {
   await uploadSvgText(
     page,
@@ -435,6 +478,7 @@ async function verifyDesktop(page) {
   await verifyImageLibrary(page);
   await verifyPlayModes(page);
   await verifyFreePlacementBoardSwap(page);
+  await verifyGlueMode(page);
   await verifyEquivalentPieces(page);
   await verifyBrowserPersistence(page);
 
@@ -469,11 +513,18 @@ async function verifyDesktop(page) {
 
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), false);
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
+  assert.equal(await page.locator('#see-again-button').count(), 1);
+  assert.equal(await page.locator('#next-image-button').count(), 1);
   await page.screenshot({ path: path.join(screenshotsDir, 'desktop-complete.png'), fullPage: true });
 
-  await page.locator('#replay-button').click();
+  const completedImageName = await page.locator('.image-card.selected').getAttribute('data-image-name');
+  await page.locator('#see-again-button').click();
   await page.waitForTimeout(80);
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
+  assert.equal(await page.locator('.piece.placed').count(), 4);
+
+  await page.locator('#reset-button').click();
   assert.equal(await page.locator('#tray > .piece').count(), 4);
 
   await page.locator('.piece[data-piece-id="piece-0-0"]').press('Enter');
@@ -486,7 +537,18 @@ async function verifyDesktop(page) {
   await page.waitForTimeout(80);
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), false);
 
-  await page.locator('#replay-button').click();
+  await page.locator('#next-image-button').click();
+  await page.waitForTimeout(120);
+  assert.notEqual(await page.locator('.image-card.selected').getAttribute('data-image-name'), completedImageName);
+  assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
+
+  await page.locator(`.image-card[data-image-name="${completedImageName}"]`).click();
+  await page.waitForTimeout(120);
+  assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
+  assert.equal(await page.locator('.piece.placed').count(), 4);
+
+  await page.locator('#see-again-button').click();
+  await page.locator('#reset-button').click();
   await page.locator('.grid-button[data-grid-size="3"]').click();
   await page.locator('.piece[data-piece-id="piece-2-2"]').press('Enter');
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 1 / 9');

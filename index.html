@@ -31,6 +31,7 @@
         <div class="mode-control" role="group" aria-label="玩法模式">
           <button class="mode-button active" type="button" data-mode="guide" aria-pressed="true">底图</button>
           <button class="mode-button active" type="button" data-mode="correction" aria-pressed="true">纠错</button>
+          <button class="mode-button" type="button" data-mode="glue" aria-pressed="false">粘合</button>
           <button class="mode-button" type="button" data-mode="hint" aria-pressed="false">提示</button>
         </div>
       </div>
@@ -68,7 +69,10 @@
       <div class="completion-panel" role="dialog" aria-modal="true" aria-labelledby="completion-title">
         <div class="completion-stars" aria-hidden="true">★ ★ ★</div>
         <h2 id="completion-title">拼好了！</h2>
-        <button class="replay-button" id="replay-button" type="button">再玩一次</button>
+        <div class="completion-actions">
+          <button class="replay-button secondary" id="see-again-button" type="button">再看看</button>
+          <button class="replay-button" id="next-image-button" type="button">下一张</button>
+        </div>
       </div>
     </section>
   </main>

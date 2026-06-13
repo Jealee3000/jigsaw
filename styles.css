@@ -491,6 +491,13 @@ h1 {
   pointer-events: auto;
 }
 
+.glue-mode .piece.placed.glued {
+  outline: 3px solid rgba(255, 217, 88, .75);
+  outline-offset: -3px;
+  cursor: grab;
+  pointer-events: auto;
+}
+
 .piece.placed.dragging {
   position: fixed;
   z-index: 20;
@@ -550,14 +557,24 @@ h1 {
   line-height: 1.05;
 }
 
+.completion-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .replay-button {
-  min-width: min(220px, 100%);
+  min-width: 0;
   padding: 0 22px;
   border-radius: 8px;
   font-size: 24px;
   font-weight: 800;
   line-height: 1.1;
   background: #fff1a9;
+}
+
+.replay-button.secondary {
+  background: var(--paper);
 }
 
 @keyframes pop {
