@@ -22,6 +22,10 @@
     shiftedTargetId,
     targetOffset,
   } = window.PuppyJigsawGlue;
+  const Drag = window.PuppyJigsawDrag;
+  const Layout = window.PuppyJigsawDom;
+  const Modes = window.PuppyJigsawModes;
+  const Library = window.PuppyJigsawLibrary;
 
   const root = document.documentElement;
   const board = document.querySelector('#board');
@@ -66,6 +70,13 @@
     sound: false,
     autoNext: false,
   };
+  const layout = Layout.createLayoutController({
+    root,
+    board,
+    slotLayer,
+    getGridSize: () => gridSize,
+    getPuzzleRatio: () => puzzleRatio,
+  });
   const completionFeedback = window.PuppyJigsawCompletion.createCompletionFeedback({
     countdownElement: completionCountdown,
     getImageCount: () => imageLibrary.length,
@@ -286,15 +297,12 @@
   }
 
   function updateModeControls() {
-    board.classList.toggle('hide-guide', !modeState.guide);
-    root.classList.toggle('free-placement', !modeState.correction);
-    root.classList.toggle('glue-mode', modeState.glue);
-
-    for (const button of modeButtons) {
-      const isActive = Boolean(modeState[button.dataset.mode]);
-      button.classList.toggle('active', isActive);
-      button.setAttribute('aria-pressed', String(isActive));
-    }
+    Modes.updateModeControls({
+      root,
+      board,
+      modeButtons,
+      modeState,
+    });
   }
 
   async function refreshEquivalentTargets() {
@@ -401,45 +409,14 @@
 
   function renderImageLibrary() {
     const saved = readSavedData();
-    imageList.replaceChildren();
-
-    if (imageLibrary.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'image-empty';
-      empty.textContent = 'images 文件夹还没有图片';
-      imageList.appendChild(empty);
-      return;
-    }
-
-    for (const image of imageLibrary) {
-      const button = document.createElement('button');
-      const thumbnail = document.createElement('img');
-      const name = document.createElement('span');
-
-      button.className = 'image-card';
-      button.type = 'button';
-      button.dataset.imageName = image.name;
-      button.classList.toggle('selected', image.url === currentImageUrl);
-      button.classList.toggle('completed', isImageCompleted(image, saved));
-      button.setAttribute('aria-pressed', String(image.url === currentImageUrl));
-
-      thumbnail.src = image.url;
-      thumbnail.alt = image.name;
-      thumbnail.loading = 'lazy';
-
-      name.className = 'image-name';
-      name.textContent = image.name;
-
-      button.append(thumbnail, name);
-      if (isImageCompleted(image, saved)) {
-        const badge = document.createElement('span');
-        badge.className = 'completion-badge';
-        badge.textContent = '完成';
-        button.appendChild(badge);
-      }
-      button.addEventListener('click', () => selectLibraryImage(image));
-      imageList.appendChild(button);
-    }
+    Library.renderImageLibrary({
+      imageList,
+      imageLibrary,
+      currentImageUrl,
+      saved,
+      isImageCompleted,
+      onSelectImage: selectLibraryImage,
+    });
   }
 
   async function selectLibraryImage(image, options = {}) {
@@ -507,141 +484,42 @@
   }
 
   function setGridVariables() {
-    root.style.setProperty('--grid-size', gridSize);
-    root.style.setProperty('--tray-columns', gridSize);
-  }
-
-  function getPixels(value) {
-    return Number.parseFloat(value) || 0;
+    layout.setGridVariables();
   }
 
   function syncLayoutSize() {
-    const shell = document.querySelector('.game-shell');
-    const gameLayout = document.querySelector('.game-layout');
-    const imageLibraryNode = document.querySelector('.image-library');
-    const playArea = document.querySelector('.play-area');
-
-    if (!shell || !gameLayout || !imageLibraryNode || !playArea) {
-      return;
-    }
-
-    const shellRect = shell.getBoundingClientRect();
-    const layoutRect = gameLayout.getBoundingClientRect();
-    const libraryRect = imageLibraryNode.getBoundingClientRect();
-    const layoutStyle = getComputedStyle(gameLayout);
-    const playStyle = getComputedStyle(playArea);
-    const boardStyle = getComputedStyle(board);
-    const layoutGap = getPixels(layoutStyle.columnGap);
-    const playGap = getPixels(playStyle.columnGap);
-    const boardBorderX = getPixels(boardStyle.borderLeftWidth) + getPixels(boardStyle.borderRightWidth);
-    const boardBorderY = getPixels(boardStyle.borderTopWidth) + getPixels(boardStyle.borderBottomWidth);
-    const verticalRoom = window.innerHeight - layoutRect.top - 14;
-    const maxOuterHeight = Math.max(180, verticalRoom);
-    const contentRatio = Math.max(0.2, puzzleRatio);
-    const widthFromHeight = (maxOuterHeight - boardBorderY) * contentRatio + boardBorderX;
-    const horizontalRoom = shellRect.width - libraryRect.width - layoutGap - playGap;
-    const maxByHorizontalRoom = Math.max(240, (horizontalRoom + boardBorderX) / 2);
-    const boardOuterWidth = Math.max(240, Math.floor(Math.min(maxByHorizontalRoom, widthFromHeight)));
-    const boardContentWidth = Math.max(160, boardOuterWidth - boardBorderX);
-    const boardContentHeight = Math.max(120, Math.floor(boardContentWidth / contentRatio));
-    const boardOuterHeight = boardContentHeight + boardBorderY;
-    const pieceWidth = boardContentWidth / gridSize;
-    const pieceHeight = boardContentHeight / gridSize;
-
-    root.style.setProperty('--board-width', `${boardOuterWidth}px`);
-    root.style.setProperty('--board-height', `${boardOuterHeight}px`);
-    root.style.setProperty('--tray-width', `${boardContentWidth}px`);
-    root.style.setProperty('--tray-height', `${boardContentHeight}px`);
-    root.style.setProperty('--piece-width', `${pieceWidth}px`);
-    root.style.setProperty('--piece-height', `${pieceHeight}px`);
+    layout.syncLayoutSize();
   }
 
   function syncLoosePieceSize() {
-    const slot = slotLayer.querySelector('.slot');
-    if (!slot) {
-      return;
-    }
-
-    const rect = slot.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      return;
-    }
-
-    root.style.setProperty('--piece-width', `${rect.width}px`);
-    root.style.setProperty('--piece-height', `${rect.height}px`);
-    root.style.setProperty('--tray-width', `${rect.width * gridSize}px`);
-    root.style.setProperty('--tray-height', `${rect.height * gridSize}px`);
-  }
-
-  function parsePieceId(pieceId) {
-    const [, row, col] = pieceId.match(/^piece-(\d+)-(\d+)$/) || [];
-    return {
-      row: Number(row),
-      col: Number(col),
-    };
-  }
-
-  function getPiecePosition(pieceId) {
-    const { row, col } = parsePieceId(pieceId);
-    const max = gridSize - 1;
-    const x = max === 0 ? 0 : (col / max) * 100;
-    const y = max === 0 ? 0 : (row / max) * 100;
-    return `${x}% ${y}%`;
-  }
-
-  function getPieceLabel(pieceId) {
-    const { row, col } = parsePieceId(pieceId);
-    return `${row + 1}-${col + 1}`;
+    layout.syncLoosePieceSize();
   }
 
   function createSlot(pieceId) {
-    const slot = document.createElement('div');
-    slot.className = 'slot';
-    slot.dataset.targetId = pieceId;
-    slot.style.setProperty('--piece-position', getPiecePosition(pieceId));
-    slot.setAttribute('aria-label', `${getPieceLabel(pieceId)} 拼图位置`);
-    return slot;
+    return Layout.createSlot(pieceId, gridSize);
   }
 
   function createPiece(pieceId) {
-    const piece = document.createElement('button');
-    const label = document.createElement('span');
-    piece.className = `piece${gridSize >= 4 ? ' compact' : ''}`;
-    piece.dataset.pieceId = pieceId;
-    piece.type = 'button';
-    piece.style.setProperty('--piece-position', getPiecePosition(pieceId));
-    piece.setAttribute('aria-label', `${getPieceLabel(pieceId)} 拼图片`);
-    label.className = 'piece-label';
-    label.textContent = getPieceLabel(pieceId);
-    piece.appendChild(label);
-    bindPieceEvents(piece);
-    return piece;
+    return Layout.createPiece(pieceId, gridSize, bindPieceEvents);
   }
 
   function getPieces() {
-    return pieceIds.map((pieceId) => document.querySelector(`.piece[data-piece-id="${pieceId}"]`))
-      .filter(Boolean);
+    return Layout.getPieces(pieceIds);
   }
 
   function getSlots() {
-    return pieceIds.map((pieceId) => document.querySelector(`.slot[data-target-id="${pieceId}"]`))
-      .filter(Boolean);
+    return Layout.getSlots(pieceIds);
   }
 
   function getSlotForPiece(pieceId) {
-    return document.querySelector(`.slot[data-target-id="${pieceId}"]`);
+    return Layout.getSlotForPiece(pieceId);
   }
 
   function updateSlotOccupancy() {
-    const occupiedTargets = new Set(
-      Object.values(gameState.pieces)
-        .filter((piece) => piece.placed && piece.currentTargetId)
-        .map((piece) => piece.currentTargetId),
-    );
-
-    for (const slot of getSlots()) {
-      slot.classList.toggle('occupied', occupiedTargets.has(slot.dataset.targetId));
-    }
+    Layout.updateSlotOccupancy({
+      gameState,
+      slots: getSlots(),
+    });
   }
 
   function renderPuzzle(options = {}) {
@@ -755,90 +633,9 @@
     return restoreImageState(image, saved.imageStates?.[image.name]);
   }
 
-  function getSnapThreshold(slotRect) {
-    return Math.max(24, Math.min(72, Math.min(slotRect.width, slotRect.height) * 0.32));
-  }
-
-  function getSlotDetails(slot, point) {
-    const rect = slot.getBoundingClientRect();
-    const center = {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    };
-
-    return {
-      slot,
-      rect,
-      center,
-      distance: Math.hypot(point.x - center.x, point.y - center.y),
-      snapThreshold: getSnapThreshold(rect),
-      targetId: slot.dataset.targetId,
-    };
-  }
-
-  function getClosestSlot(point) {
-    return getSlots()
-      .map((slot) => getSlotDetails(slot, point))
-      .sort((a, b) => a.distance - b.distance)[0] || null;
-  }
-
-  function getBestOverlappedSlot(pieceRect, point) {
-    return getSlots()
-      .map((slot) => {
-        const details = getSlotDetails(slot, point);
-        const rect = details.rect;
-        const overlapWidth = Math.max(
-          0,
-          Math.min(pieceRect.right, rect.right) - Math.max(pieceRect.left, rect.left),
-        );
-        const overlapHeight = Math.max(
-          0,
-          Math.min(pieceRect.bottom, rect.bottom) - Math.max(pieceRect.top, rect.top),
-        );
-        const overlapArea = overlapWidth * overlapHeight;
-        const slotArea = Math.max(1, rect.width * rect.height);
-
-        return {
-          ...details,
-          overlapArea,
-          overlapRatio: overlapArea / slotArea,
-        };
-      })
-      .sort((a, b) => b.overlapArea - a.overlapArea)[0] || null;
-  }
-
-  function getDropSlot(point, piece) {
-    if (modeState.correction) {
-      return getClosestSlot(point);
-    }
-
-    const pieceRect = piece.getBoundingClientRect();
-    const overlappedSlot = getBestOverlappedSlot(pieceRect, point);
-    return overlappedSlot?.overlapRatio > 0 ? overlappedSlot : getClosestSlot(point);
-  }
-
-  function isDropReady(slotDetails) {
-    if (!slotDetails) {
-      return false;
-    }
-
-    if (!modeState.correction && typeof slotDetails.overlapRatio === 'number') {
-      return slotDetails.overlapRatio >= 0.35
-        || slotDetails.distance <= slotDetails.snapThreshold;
-    }
-
-    return slotDetails.distance <= slotDetails.snapThreshold;
-  }
-
   function clearReadySlots() {
     for (const slot of getSlots()) {
       slot.classList.remove('ready');
-    }
-  }
-
-  function releasePointerCapture(piece, pointerId) {
-    if (piece.hasPointerCapture(pointerId)) {
-      piece.releasePointerCapture(pointerId);
     }
   }
 
@@ -855,155 +652,9 @@
   function setReadySlot(slotDetails) {
     clearReadySlots();
 
-    if (isDropReady(slotDetails)) {
+    if (Drag.isDropReady(slotDetails, modeState.correction)) {
       slotDetails.slot.classList.add('ready');
     }
-  }
-
-  function movePieceToPointer(piece, clientX, clientY) {
-    const width = activeDrag?.width || piece.getBoundingClientRect().width;
-    const height = activeDrag?.height || piece.getBoundingClientRect().height;
-    const offsetX = activeDrag?.offsetX ?? width / 2;
-    const offsetY = activeDrag?.offsetY ?? height / 2;
-
-    piece.style.left = `${clientX - offsetX}px`;
-    piece.style.top = `${clientY - offsetY}px`;
-  }
-
-  function moveDraggedPiecesToPointer(clientX, clientY) {
-    if (!activeDrag?.dragItems) {
-      movePieceToPointer(activeDrag.piece, clientX, clientY);
-      return;
-    }
-
-    for (const item of activeDrag.dragItems) {
-      item.piece.style.left = `${clientX - item.offsetX}px`;
-      item.piece.style.top = `${clientY - item.offsetY}px`;
-    }
-  }
-
-  function prepareDraggingPiece(item) {
-    item.piece.style.setProperty('--drag-width', `${item.width}px`);
-    item.piece.style.setProperty('--drag-height', `${item.height}px`);
-    item.piece.classList.add('dragging');
-  }
-
-  function buildGroupDropTargets(drag, activeTargetId) {
-    if (!drag.originTargetId || !activeTargetId) {
-      return null;
-    }
-
-    const offset = targetOffset(drag.originTargetId, activeTargetId);
-    const targets = new Map();
-
-    for (const item of drag.dragItems) {
-      if (!item.originTargetId) {
-        return null;
-      }
-
-      const targetId = shiftedTargetId(item.originTargetId, offset, gridSize);
-      if (!targetId || targets.has(targetId)) {
-        return null;
-      }
-
-      targets.set(item.pieceId, targetId);
-    }
-
-    return targets;
-  }
-
-  function collectGroupBlockers(targets, groupPieceIds) {
-    const groupSet = new Set(groupPieceIds);
-    const blockers = [];
-
-    for (const [pieceId, targetId] of targets.entries()) {
-      const occupiedPiece = getPlacedPieceAtTarget(targetId, pieceId);
-      if (occupiedPiece && !groupSet.has(occupiedPiece.dataset.pieceId)) {
-        blockers.push(occupiedPiece);
-      }
-    }
-
-    return blockers;
-  }
-
-  function buildGroupSwapTargets(drag, targets) {
-    const activeTargetId = targets.get(drag.pieceId);
-    if (!drag.originTargetId || !activeTargetId) {
-      return null;
-    }
-
-    const blockers = collectGroupBlockers(targets, drag.groupPieceIds);
-    if (!blockers.length) {
-      return new Map();
-    }
-
-    const offset = targetOffset(drag.originTargetId, activeTargetId);
-    const inverseOffset = { row: -offset.row, col: -offset.col };
-    const groupSet = new Set(drag.groupPieceIds);
-    const blockerSet = new Set(blockers.map((piece) => piece.dataset.pieceId));
-    const swapTargets = new Map();
-    const usedTargets = new Set();
-
-    for (const blocker of blockers) {
-      const pieceId = blocker.dataset.pieceId;
-      const piece = gameState.pieces[pieceId];
-      const currentTargetId = blocker.dataset.currentTargetId || piece?.currentTargetId;
-      const swapTargetId = shiftedTargetId(currentTargetId, inverseOffset, gridSize);
-
-      if (!piece || !swapTargetId || usedTargets.has(swapTargetId)) {
-        return null;
-      }
-
-      const occupiedPiece = getPlacedPieceAtTarget(swapTargetId, pieceId);
-      if (
-        occupiedPiece
-        && !groupSet.has(occupiedPiece.dataset.pieceId)
-        && !blockerSet.has(occupiedPiece.dataset.pieceId)
-      ) {
-        return null;
-      }
-
-      if (
-        modeState.correction
-        && !isTargetAccepted(piece, swapTargetId, equivalentTargets)
-      ) {
-        return null;
-      }
-
-      swapTargets.set(pieceId, swapTargetId);
-      usedTargets.add(swapTargetId);
-    }
-
-    return swapTargets;
-  }
-
-  function canPlaceGroup(targets, groupPieceIds, swapTargets = new Map()) {
-    const groupSet = new Set(groupPieceIds);
-    const swappableBlockers = new Set(swapTargets.keys());
-
-    for (const [pieceId, targetId] of targets.entries()) {
-      if (!getSlotByTargetId(targetId)) {
-        return false;
-      }
-
-      const occupiedPiece = getPlacedPieceAtTarget(targetId, pieceId);
-      if (
-        occupiedPiece
-        && !groupSet.has(occupiedPiece.dataset.pieceId)
-        && !swappableBlockers.has(occupiedPiece.dataset.pieceId)
-      ) {
-        return false;
-      }
-
-      if (
-        modeState.correction
-        && !isTargetAccepted(gameState.pieces[pieceId], targetId, equivalentTargets)
-      ) {
-        return false;
-      }
-    }
-
-    return true;
   }
 
   function placeGroupSwapTargets(swapTargets) {
@@ -1330,11 +981,16 @@
     event.preventDefault();
     for (const item of dragItems) {
       markPieceLoose(item.pieceId);
-      prepareDraggingPiece(item);
+      Drag.prepareDraggingPiece(item);
     }
     piece.setPointerCapture(event.pointerId);
-    moveDraggedPiecesToPointer(event.clientX, event.clientY);
-    setReadySlot(getDropSlot({ x: event.clientX, y: event.clientY }, piece));
+    Drag.moveDraggedPiecesToPointer(activeDrag, event.clientX, event.clientY);
+    setReadySlot(Drag.getDropSlot({
+      correction: modeState.correction,
+      slots: getSlots(),
+      point: { x: event.clientX, y: event.clientY },
+      piece,
+    }));
   }
 
   function onPointerMove(event) {
@@ -1345,8 +1001,13 @@
     event.preventDefault();
     activeDrag.didMove = activeDrag.didMove
       || Math.hypot(event.clientX - activeDrag.startX, event.clientY - activeDrag.startY) > 6;
-    moveDraggedPiecesToPointer(event.clientX, event.clientY);
-    setReadySlot(getDropSlot({ x: event.clientX, y: event.clientY }, activeDrag.piece));
+    Drag.moveDraggedPiecesToPointer(activeDrag, event.clientX, event.clientY);
+    setReadySlot(Drag.getDropSlot({
+      correction: modeState.correction,
+      slots: getSlots(),
+      point: { x: event.clientX, y: event.clientY },
+      piece: activeDrag.piece,
+    }));
   }
 
   function onPointerUp(event) {
@@ -1356,8 +1017,13 @@
 
     const drag = activeDrag;
     const point = { x: event.clientX, y: event.clientY };
-    moveDraggedPiecesToPointer(event.clientX, event.clientY);
-    const closestSlot = getDropSlot(point, drag.piece);
+    Drag.moveDraggedPiecesToPointer(activeDrag, event.clientX, event.clientY);
+    const closestSlot = Drag.getDropSlot({
+      correction: modeState.correction,
+      slots: getSlots(),
+      point,
+      piece: drag.piece,
+    });
     const occupiedSlotPiece = closestSlot
       ? getPlacedPieceAtTarget(closestSlot.targetId, drag.pieceId)
       : null;
@@ -1374,24 +1040,51 @@
 
     activeDrag = null;
     clearReadySlots();
-    releasePointerCapture(drag.piece, event.pointerId);
+    Drag.releasePointerCapture(drag.piece, event.pointerId);
 
     if (drag.didMove) {
       suppressedClicks.add(drag.piece);
     }
 
     if (drag.groupPieceIds?.length > 1) {
-      const groupTargets = closestSlot && isDropReady(closestSlot)
-        ? buildGroupDropTargets(drag, closestSlot.targetId)
+      const groupTargets = closestSlot && Drag.isDropReady(closestSlot, modeState.correction)
+        ? Drag.buildGroupDropTargets({
+          drag,
+          activeTargetId: closestSlot.targetId,
+          gridSize,
+          shiftedTargetId,
+          targetOffset,
+        })
         : null;
       const groupSwapTargets = groupTargets
-        ? buildGroupSwapTargets(drag, groupTargets)
+        ? Drag.buildGroupSwapTargets({
+          drag,
+          targets: groupTargets,
+          gridSize,
+          gameState,
+          modeState,
+          equivalentTargets,
+          getPlacedPieceAtTarget,
+          isTargetAccepted,
+          shiftedTargetId,
+          targetOffset,
+        })
         : null;
 
       if (
         groupTargets
         && groupSwapTargets
-        && canPlaceGroup(groupTargets, drag.groupPieceIds, groupSwapTargets)
+        && Drag.canPlaceGroup({
+          targets: groupTargets,
+          groupPieceIds: drag.groupPieceIds,
+          swapTargets: groupSwapTargets,
+          gameState,
+          modeState,
+          equivalentTargets,
+          getSlotByTargetId,
+          getPlacedPieceAtTarget,
+          isTargetAccepted,
+        })
       ) {
         placeGroupSwapTargets(groupSwapTargets);
         placeDraggedGroup(drag, groupTargets);
@@ -1412,7 +1105,7 @@
     if (
       !modeState.correction
       && closestSlot
-      && isDropReady(closestSlot)
+      && Drag.isDropReady(closestSlot, modeState.correction)
     ) {
       const blockingPiece = getPlacedPieceAtTarget(closestSlot.targetId, drag.pieceId);
       if (blockingPiece) {
@@ -1450,7 +1143,7 @@
       return;
     }
 
-    releasePointerCapture(activeDrag.piece, event.pointerId);
+    Drag.releasePointerCapture(activeDrag.piece, event.pointerId);
     suppressedClicks.add(activeDrag.piece);
     if (activeDrag.groupPieceIds?.length > 1) {
       restoreDraggedGroup(activeDrag);
@@ -1472,7 +1165,7 @@
       return;
     }
 
-    const slotDetails = getSlotDetails(slot, { x: 0, y: 0 });
+    const slotDetails = Drag.getSlotDetails(slot, { x: 0, y: 0 });
     if (getPlacedPieceAtTarget(targetId, pieceId)) {
       return;
     }
@@ -1664,13 +1357,7 @@
   seeAgainButton.addEventListener('click', hideCelebration);
   nextImageButton.addEventListener('click', goToNextImage);
 
-  if ('ResizeObserver' in window) {
-    resizeObserver = new ResizeObserver(syncLoosePieceSize);
-    resizeObserver.observe(board);
-  } else {
-    window.addEventListener('resize', syncLoosePieceSize);
-  }
-  window.addEventListener('resize', syncLayoutSize);
+  resizeObserver = layout.observeResize();
 
   setPuzzleImage(currentImageUrl);
   setPuzzleRatio(600, 420);
