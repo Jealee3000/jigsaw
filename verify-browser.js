@@ -591,7 +591,7 @@ async function verifyDesktop(page) {
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
   assert.equal(await page.locator('.piece.placed').count(), 4);
 
-  await page.locator('#see-again-button').click();
+  assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
   await page.locator('#reset-button').click();
   await page.locator('.grid-button[data-grid-size="3"]').click();
   await page.locator('.piece[data-piece-id="piece-2-2"]').press('Enter');

@@ -948,10 +948,11 @@
     const currentIndex = Math.max(0, imageLibrary.findIndex((image) => image.name === currentName));
     const nextImage = imageLibrary[(currentIndex + 1) % imageLibrary.length];
 
-    completionDismissed = false;
     celebration.hidden = true;
+    completionDismissed = true;
     saveState();
-    await selectLibraryImage(nextImage, { silent: true });
+    completionDismissed = false;
+    await selectLibraryImage(nextImage, { silent: true, skipSave: true });
     setStatus(`下一张 ${nextImage.name}`);
   }
 
