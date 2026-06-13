@@ -146,6 +146,7 @@
       pieces: serializePieces(),
       hints: Array.from(hintPieces.keys()),
       completionDismissed,
+      solved: isPuzzleSolved(),
     };
   }
 
@@ -343,7 +344,16 @@
     }
   }
 
+  function isImageCompleted(image, saved) {
+    if (image.url === currentImageUrl) {
+      return isPuzzleSolved();
+    }
+
+    return saved.imageStates?.[image.name]?.solved === true;
+  }
+
   function renderImageLibrary() {
+    const saved = readSavedData();
     imageList.replaceChildren();
 
     if (imageLibrary.length === 0) {
@@ -363,6 +373,7 @@
       button.type = 'button';
       button.dataset.imageName = image.name;
       button.classList.toggle('selected', image.url === currentImageUrl);
+      button.classList.toggle('completed', isImageCompleted(image, saved));
       button.setAttribute('aria-pressed', String(image.url === currentImageUrl));
 
       thumbnail.src = image.url;
@@ -373,6 +384,12 @@
       name.textContent = image.name;
 
       button.append(thumbnail, name);
+      if (isImageCompleted(image, saved)) {
+        const badge = document.createElement('span');
+        badge.className = 'completion-badge';
+        badge.textContent = '完成';
+        button.appendChild(badge);
+      }
       button.addEventListener('click', () => selectLibraryImage(image));
       imageList.appendChild(button);
     }
@@ -921,6 +938,7 @@
   function showCelebrationIfComplete() {
     if (isPuzzleSolved()) {
       board.classList.add('solved');
+      renderImageLibrary();
       if (!completionDismissed) {
         celebration.hidden = false;
         window.setTimeout(() => nextImageButton.focus(), 0);
@@ -971,6 +989,7 @@
     piece.currentTargetId = null;
     board.classList.remove('solved');
     updateSlotOccupancy();
+    renderImageLibrary();
   }
 
   function markPiecePlaced(pieceId, targetId) {
@@ -1488,6 +1507,7 @@
     updateProgress();
     recomputeGlueGroups();
     saveState();
+    renderImageLibrary();
 
     if (!options.preserveFocus) {
       resetButton.focus();

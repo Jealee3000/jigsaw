@@ -556,6 +556,8 @@ async function verifyDesktop(page) {
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), false);
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
   await assertSolvedSlotGuidesHidden(page, 4);
+  assert.equal(await page.locator('.image-card.selected.completed').count(), 1);
+  assert.equal(await page.locator('.image-card.selected .completion-badge').count(), 1);
   assert.equal(await page.locator('#see-again-button').count(), 1);
   assert.equal(await page.locator('#next-image-button').count(), 1);
   await page.screenshot({ path: path.join(screenshotsDir, 'desktop-complete.png'), fullPage: true });
