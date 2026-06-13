@@ -375,6 +375,16 @@ h1 {
     linear-gradient(135deg, rgba(255, 255, 255, .26), rgba(255, 255, 255, .08));
 }
 
+.slot.occupied {
+  border-color: transparent;
+  background: transparent;
+}
+
+.board.solved .slot {
+  border-color: transparent;
+  background: transparent;
+}
+
 .slot.ready {
   border-color: var(--yellow);
   background: rgba(255, 217, 88, .26);

@@ -111,7 +111,33 @@ async function trayOrder(page) {
 async function assertGrid(page, size) {
   assert.equal(await page.locator('.piece').count(), size * size);
   assert.equal(await page.locator('.slot').count(), size * size);
+  assert.equal(await page.locator('.slot.occupied').count(), 0);
+  assert.equal(await page.locator('#board').evaluate((node) => node.classList.contains('solved')), false);
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), `完成 0 / ${size * size}`);
+}
+
+async function assertSolvedSlotGuidesHidden(page, expectedCount) {
+  const slotStyles = await page.evaluate(() => (
+    Array.from(document.querySelectorAll('.slot')).map((slot) => {
+      const style = getComputedStyle(slot);
+      return {
+        targetId: slot.dataset.targetId,
+        borderTopColor: style.borderTopColor,
+        backgroundImage: style.backgroundImage,
+      };
+    })
+  ));
+
+  assert.equal(await page.locator('#board').evaluate((node) => node.classList.contains('solved')), true);
+  assert.equal(slotStyles.length, expectedCount);
+  assert.deepEqual(
+    slotStyles.filter((slot) => slot.borderTopColor !== 'rgba(0, 0, 0, 0)'),
+    [],
+  );
+  assert.deepEqual(
+    slotStyles.filter((slot) => slot.backgroundImage !== 'none'),
+    [],
+  );
 }
 
 async function currentPuzzleImage(page) {
@@ -520,6 +546,7 @@ async function verifyDesktop(page) {
 
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), false);
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
+  await assertSolvedSlotGuidesHidden(page, 4);
   assert.equal(await page.locator('#see-again-button').count(), 1);
   assert.equal(await page.locator('#next-image-button').count(), 1);
   await page.screenshot({ path: path.join(screenshotsDir, 'desktop-complete.png'), fullPage: true });
@@ -533,6 +560,7 @@ async function verifyDesktop(page) {
 
   await page.locator('#reset-button').click();
   assert.equal(await page.locator('#tray > .piece').count(), 4);
+  assert.equal(await page.locator('.slot.occupied').count(), 0);
 
   await page.locator('.piece[data-piece-id="piece-0-0"]').press('Enter');
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 1 / 4');

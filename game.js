@@ -769,6 +769,18 @@
     return document.querySelector(`.slot[data-target-id="${pieceId}"]`);
   }
 
+  function updateSlotOccupancy() {
+    const occupiedTargets = new Set(
+      Object.values(gameState.pieces)
+        .filter((piece) => piece.placed && piece.currentTargetId)
+        .map((piece) => piece.currentTargetId),
+    );
+
+    for (const slot of getSlots()) {
+      slot.classList.toggle('occupied', occupiedTargets.has(slot.dataset.targetId));
+    }
+  }
+
   function renderPuzzle(options = {}) {
     for (const piece of Array.from(board.querySelectorAll('.piece'))) {
       piece.remove();
@@ -787,6 +799,7 @@
       slotLayer.appendChild(createSlot(pieceId));
     }
 
+    updateSlotOccupancy();
     updateGuideHint();
 
     for (const pieceId of trayPieceIds) {
@@ -1109,6 +1122,7 @@
 
   function showCelebrationIfComplete() {
     if (isPuzzleSolved()) {
+      board.classList.add('solved');
       if (!completionDismissed) {
         celebration.hidden = false;
         window.setTimeout(() => nextImageButton.focus(), 0);
@@ -1116,6 +1130,7 @@
       return true;
     }
 
+    board.classList.remove('solved');
     return false;
   }
 
@@ -1155,6 +1170,8 @@
 
     piece.placed = false;
     piece.currentTargetId = null;
+    board.classList.remove('solved');
+    updateSlotOccupancy();
   }
 
   function markPiecePlaced(pieceId, targetId) {
@@ -1170,6 +1187,7 @@
 
     piece.placed = true;
     piece.currentTargetId = targetId;
+    updateSlotOccupancy();
   }
 
   function placePiece(piece, slot) {
@@ -1663,6 +1681,7 @@
     gameState = resetGameState(pieceIds);
     activeDrag = null;
     completionDismissed = false;
+    board.classList.remove('solved');
     clearHints();
     clearReadySlots();
     celebration.hidden = true;
