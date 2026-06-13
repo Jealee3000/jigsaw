@@ -88,12 +88,3 @@ node verify-browser.js
 
 当前布局以桌面浏览器优先。移动端验证如果在很窄视口下失败，通常需要单独调整移动端布局阈值。
 
-## Git 和远端
-
-初始化远端后，可以按 GitHub 提示添加远端并推送：
-
-```powershell
-git remote add origin <你的 GitHub 仓库地址>
-git push -u origin main
-```
-
