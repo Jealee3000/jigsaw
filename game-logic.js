@@ -1,4 +1,4 @@
-const SUPPORTED_GRID_SIZES = Object.freeze([2, 3, 4]);
+const SUPPORTED_GRID_SIZES = Object.freeze([2, 3, 4, 5]);
 
 function createPieceIds(gridSize) {
   if (!SUPPORTED_GRID_SIZES.includes(gridSize)) {

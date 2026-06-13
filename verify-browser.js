@@ -486,6 +486,13 @@ async function verifyDesktop(page) {
   await assertGrid(page, 3);
   await page.locator('.grid-button[data-grid-size="4"]').click();
   await assertGrid(page, 4);
+  await page.locator('.grid-button[data-grid-size="5"]').click();
+  await assertGrid(page, 5);
+  const fiveByFivePieceSize = await page.locator('.piece').first().evaluate((piece) => {
+    const rect = piece.getBoundingClientRect();
+    return Math.min(rect.width, rect.height);
+  });
+  assert.ok(fiveByFivePieceSize >= 76, `5x5 piece too small: ${fiveByFivePieceSize}`);
 
   await page.locator('.grid-button[data-grid-size="2"]').click();
   await assertGrid(page, 2);

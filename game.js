@@ -805,7 +805,7 @@
     }
 
     const savedGridSize = Number(saved.gridSize);
-    if (![2, 3, 4].includes(savedGridSize)) {
+    if (!window.PuppyJigsawLogic.SUPPORTED_GRID_SIZES.includes(savedGridSize)) {
       return false;
     }
 

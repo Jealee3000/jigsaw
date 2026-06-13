@@ -18,12 +18,13 @@ test('creates ordered piece ids for supported grid sizes', () => {
   ]);
   assert.equal(createPieceIds(3).length, 9);
   assert.equal(createPieceIds(4).length, 16);
-  assert.equal(createPieceIds(4)[15], 'piece-3-3');
+  assert.equal(createPieceIds(5).length, 25);
+  assert.equal(createPieceIds(5)[24], 'piece-4-4');
 });
 
 test('rejects unsupported grid sizes', () => {
   assert.throws(() => createPieceIds(1), /grid size/i);
-  assert.throws(() => createPieceIds(5), /grid size/i);
+  assert.throws(() => createPieceIds(6), /grid size/i);
 });
 
 test('initializes dynamic state with matching target ids', () => {

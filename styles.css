@@ -492,8 +492,6 @@ h1 {
 }
 
 .glue-mode .piece.placed.glued {
-  outline: 3px solid rgba(255, 217, 88, .75);
-  outline-offset: -3px;
   cursor: grab;
   pointer-events: auto;
 }
