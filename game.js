@@ -27,6 +27,7 @@
   const seeAgainButton = document.querySelector('#see-again-button');
   const nextImageButton = document.querySelector('#next-image-button');
   const celebration = document.querySelector('#celebration');
+  const completionCountdown = document.querySelector('#completion-countdown');
   const imageInput = document.querySelector('#image-input');
   const imageList = document.querySelector('#image-list');
   const statusMessage = document.querySelector('#status-message');
@@ -53,10 +54,15 @@
   let equivalentAnalysisToken = 0;
   let pieceGlueIds = new Map();
   let glueMembers = new Map();
+  let autoNextTimer = null;
+  let autoNextInterval = null;
+  const autoNextDelayMs = 4000;
   const modeState = {
     guide: true,
     correction: true,
     glue: false,
+    sound: false,
+    autoNext: false,
   };
 
   function getFallbackImageUrl() {
@@ -142,6 +148,8 @@
         guide: modeState.guide,
         correction: modeState.correction,
         glue: modeState.glue,
+        sound: modeState.sound,
+        autoNext: modeState.autoNext,
       },
       pieces: serializePieces(),
       hints: Array.from(hintPieces.keys()),
@@ -646,6 +654,8 @@
     modeState.guide = saved.modeState?.guide !== false;
     modeState.correction = saved.modeState?.correction !== false;
     modeState.glue = saved.modeState?.glue === true;
+    modeState.sound = saved.modeState?.sound === true;
+    modeState.autoNext = saved.modeState?.autoNext === true;
     completionDismissed = saved.completionDismissed === true;
     hintPieces.clear();
     hintGeneration += 1;
@@ -935,12 +945,80 @@
     });
   }
 
+  function clearAutoNextTimer() {
+    if (autoNextTimer) {
+      window.clearTimeout(autoNextTimer);
+      autoNextTimer = null;
+    }
+
+    if (autoNextInterval) {
+      window.clearInterval(autoNextInterval);
+      autoNextInterval = null;
+    }
+
+    completionCountdown.hidden = true;
+    completionCountdown.textContent = '';
+  }
+
+  function playCompletionSound() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!modeState.sound || !AudioContextClass) {
+      return;
+    }
+
+    try {
+      const context = new AudioContextClass();
+      const gain = context.createGain();
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.55);
+      gain.connect(context.destination);
+
+      [523.25, 659.25, 783.99].forEach((frequency, index) => {
+        const oscillator = context.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(frequency, context.currentTime + index * 0.08);
+        oscillator.connect(gain);
+        oscillator.start(context.currentTime + index * 0.08);
+        oscillator.stop(context.currentTime + 0.52);
+      });
+
+      window.setTimeout(() => context.close(), 700);
+    } catch (error) {
+      // Audio is optional and may be blocked by the browser.
+    }
+  }
+
+  function scheduleAutoNext() {
+    clearAutoNextTimer();
+
+    if (!modeState.autoNext || imageLibrary.length < 2) {
+      return;
+    }
+
+    const startedAt = Date.now();
+    const updateCountdown = () => {
+      const remainingSeconds = Math.max(1, Math.ceil((autoNextDelayMs - (Date.now() - startedAt)) / 1000));
+      completionCountdown.hidden = false;
+      completionCountdown.textContent = `${remainingSeconds} 秒后下一张`;
+    };
+
+    updateCountdown();
+    autoNextInterval = window.setInterval(updateCountdown, 250);
+    autoNextTimer = window.setTimeout(() => {
+      clearAutoNextTimer();
+      goToNextImage();
+    }, autoNextDelayMs);
+  }
+
   function showCelebrationIfComplete() {
     if (isPuzzleSolved()) {
       board.classList.add('solved');
       renderImageLibrary();
       if (!completionDismissed) {
         celebration.hidden = false;
+        playCompletionSound();
+        scheduleAutoNext();
         window.setTimeout(() => nextImageButton.focus(), 0);
       }
       return true;
@@ -951,6 +1029,7 @@
   }
 
   function hideCelebration() {
+    clearAutoNextTimer();
     celebration.hidden = true;
     completionDismissed = true;
     saveState();
@@ -966,6 +1045,7 @@
     const currentIndex = Math.max(0, imageLibrary.findIndex((image) => image.name === currentName));
     const nextImage = imageLibrary[(currentIndex + 1) % imageLibrary.length];
 
+    clearAutoNextTimer();
     celebration.hidden = true;
     completionDismissed = true;
     saveState();
@@ -988,6 +1068,7 @@
     piece.placed = false;
     piece.currentTargetId = null;
     board.classList.remove('solved');
+    clearAutoNextTimer();
     updateSlotOccupancy();
     renderImageLibrary();
   }
@@ -1485,6 +1566,14 @@
     updateGuideHint();
     recomputeGlueGroups();
 
+    if (mode === 'autoNext') {
+      if (modeState.autoNext && !celebration.hidden && isPuzzleSolved()) {
+        scheduleAutoNext();
+      } else {
+        clearAutoNextTimer();
+      }
+    }
+
     if (mode === 'correction') {
       resetGame({ preserveFocus: true });
       setStatus(modeState.correction ? '已开启纠错' : '已关闭纠错，可以放错位置');
@@ -1500,6 +1589,7 @@
     activeDrag = null;
     completionDismissed = false;
     board.classList.remove('solved');
+    clearAutoNextTimer();
     clearHints();
     clearReadySlots();
     celebration.hidden = true;

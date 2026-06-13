@@ -587,6 +587,7 @@ h1 {
   font-size: 48px;
   line-height: 1;
   text-shadow: 0 3px 0 rgba(38, 49, 58, .12);
+  animation: star-bounce .8s ease-in-out infinite alternate;
 }
 
 .completion-panel h2 {
@@ -594,6 +595,17 @@ h1 {
   color: var(--coral);
   font-size: clamp(34px, 10vw, 44px);
   line-height: 1.05;
+}
+
+.completion-countdown {
+  margin: -8px 0 18px;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.completion-countdown[hidden] {
+  display: none;
 }
 
 .completion-actions {
@@ -627,6 +639,16 @@ h1 {
 
   100% {
     transform: scale(1);
+  }
+}
+
+@keyframes star-bounce {
+  from {
+    transform: translateY(0) rotate(-1deg);
+  }
+
+  to {
+    transform: translateY(-5px) rotate(1deg);
   }
 }
 

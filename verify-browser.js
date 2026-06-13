@@ -271,6 +271,10 @@ async function verifyPlayModes(page) {
   assert.equal(await page.locator('.piece-label').first().isVisible(), false);
   assert.equal(await page.locator('.mode-button[data-mode="labels"]').count(), 0);
   assert.equal(await page.locator('.mode-button[data-mode="hint"]').count(), 1);
+  assert.equal(await page.locator('.mode-button[data-mode="sound"]').count(), 1);
+  assert.equal(await page.locator('.mode-button[data-mode="autoNext"]').count(), 1);
+  assert.equal(await page.locator('.mode-button[data-mode="sound"]').getAttribute('aria-pressed'), 'false');
+  assert.equal(await page.locator('.mode-button[data-mode="autoNext"]').getAttribute('aria-pressed'), 'false');
 
   await page.locator('.mode-button[data-mode="hint"]').click();
   await page.locator('.slot.guide-hint[data-hint-ready="true"]').waitFor({ state: 'visible' });
@@ -504,6 +508,32 @@ async function verifyImageLibrary(page) {
   assert.equal(await currentPuzzleImage(page), firstImage);
 }
 
+async function verifyAutoNextCompletion(page) {
+  const firstCard = await uploadTestImage(page, 'browser-test-auto-first.svg', '#8edcff', '#ef6f63');
+  await uploadTestImage(page, 'browser-test-auto-second.svg', '#fff1a9', '#2457d6');
+  await firstCard.click();
+  await page.locator('.image-card.selected[data-image-name="browser-test-auto-first.svg"]').waitFor({ state: 'visible' });
+  await assertGrid(page, 2);
+
+  await page.locator('.mode-button[data-mode="autoNext"]').click();
+  assert.equal(await page.locator('.mode-button[data-mode="autoNext"]').getAttribute('aria-pressed'), 'true');
+
+  for (const pieceId of ['piece-0-0', 'piece-0-1', 'piece-1-0', 'piece-1-1']) {
+    await dragPieceToSlot(page, pieceId);
+  }
+
+  await page.locator('#completion-countdown').waitFor({ state: 'visible' });
+  await page.locator('.image-card.selected[data-image-name="browser-test-auto-second.svg"]').waitFor({
+    state: 'visible',
+    timeout: 6000,
+  });
+  assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
+
+  assert.equal(await page.locator('.mode-button[data-mode="autoNext"]').getAttribute('aria-pressed'), 'false');
+  await page.locator('#reset-button').click();
+  await assertGrid(page, 2);
+}
+
 async function verifyDesktop(page) {
   await page.setViewportSize({ width: 1280, height: 820 });
   await visitWithEmptyStorage(page);
@@ -511,6 +541,7 @@ async function verifyDesktop(page) {
   await assertGrid(page, 2);
   await assertDesktopPuzzleLayout(page);
   await verifyImageLibrary(page);
+  await verifyAutoNextCompletion(page);
   await verifyPlayModes(page);
   await verifyFreePlacementBoardSwap(page);
   await verifyGlueMode(page);
