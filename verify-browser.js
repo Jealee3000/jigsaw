@@ -21,6 +21,10 @@ function cleanupBrowserTestImages() {
   }
 }
 
+async function waitForNoDraggingPiece(page) {
+  await page.waitForFunction(() => !document.querySelector('.piece.dragging'));
+}
+
 async function dragPieceToSlot(page, pieceId, targetId = pieceId) {
   await page.evaluate(({ pieceId: id, targetId: target }) => {
     document.querySelector(`.piece[data-piece-id="${id}"]`)?.scrollIntoView({
@@ -53,7 +57,7 @@ async function dragPieceToSlot(page, pieceId, targetId = pieceId) {
   await page.mouse.down();
   await page.mouse.move(coords.to.x, coords.to.y, { steps: 10 });
   await page.mouse.up();
-  await page.waitForTimeout(80);
+  await waitForNoDraggingPiece(page);
 }
 
 async function dragPieceToSlotByGrabOffset(page, pieceId, targetId, offsetXRatio, offsetYRatio) {
@@ -93,7 +97,7 @@ async function dragPieceToSlotByGrabOffset(page, pieceId, targetId, offsetXRatio
   await page.mouse.down();
   await page.mouse.move(coords.to.x, coords.to.y, { steps: 10 });
   await page.mouse.up();
-  await page.waitForTimeout(80);
+  await waitForNoDraggingPiece(page);
 }
 
 async function visitWithEmptyStorage(page) {
@@ -280,7 +284,7 @@ async function verifyPlayModes(page) {
   await page.locator('.slot.guide-hint[data-hint-ready="true"]').waitFor({ state: 'visible' });
   assert.equal(await page.locator('.slot.guide-hint').count(), 1);
   await page.locator('.mode-button[data-mode="hint"]').click();
-  await page.waitForTimeout(80);
+  await page.waitForFunction(() => document.querySelectorAll('.slot.guide-hint').length === 2);
   assert.equal(await page.locator('.slot.guide-hint').count(), 2);
   assert.equal(await page.locator('.slot.guide-hint .piece').count(), 0);
 
@@ -628,7 +632,7 @@ async function verifyDesktop(page) {
 
   const completedImageName = await page.locator('.image-card.selected').getAttribute('data-image-name');
   await page.locator('#see-again-button').click();
-  await page.waitForTimeout(80);
+  await page.locator('#celebration').waitFor({ state: 'hidden' });
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
   assert.equal(await page.locator('.piece.placed').count(), 4);
@@ -644,16 +648,18 @@ async function verifyDesktop(page) {
   await page.locator('.piece[data-piece-id="piece-1-0"]').press('Space');
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 3 / 4');
   await page.locator('.piece[data-piece-id="piece-1-1"]').click();
-  await page.waitForTimeout(80);
+  await page.locator('#celebration').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), false);
 
   await page.locator('#next-image-button').click();
-  await page.waitForTimeout(120);
+  await page.waitForFunction((imageName) => (
+    document.querySelector('.image-card.selected')?.dataset.imageName !== imageName
+  ), completedImageName);
   assert.notEqual(await page.locator('.image-card.selected').getAttribute('data-image-name'), completedImageName);
   assert.equal(await page.locator('#celebration').evaluate((node) => node.hidden), true);
 
   await page.locator(`.image-card[data-image-name="${completedImageName}"]`).click();
-  await page.waitForTimeout(120);
+  await page.locator(`.image-card.selected[data-image-name="${completedImageName}"]`).waitFor({ state: 'visible' });
   assert.equal(await page.locator('.progress').getAttribute('aria-label'), '完成 4 / 4');
   assert.equal(await page.locator('.piece.placed').count(), 4);
 
