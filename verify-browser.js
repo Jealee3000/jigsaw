@@ -100,6 +100,48 @@ async function dragPieceToSlotByGrabOffset(page, pieceId, targetId, offsetXRatio
   await waitForNoDraggingPiece(page);
 }
 
+async function dragPieceBySlotDeltaRatio(page, pieceId, originTargetId, targetId, ratio) {
+  const coords = await page.evaluate(({
+    pieceId: id,
+    originTargetId: origin,
+    targetId: target,
+    ratio: moveRatio,
+  }) => {
+    const piece = document.querySelector(`.piece[data-piece-id="${id}"]`);
+    const originSlot = document.querySelector(`.slot[data-target-id="${origin}"]`);
+    const targetSlot = document.querySelector(`.slot[data-target-id="${target}"]`);
+    if (!piece || !originSlot || !targetSlot) return null;
+
+    const pieceRect = piece.getBoundingClientRect();
+    const originRect = originSlot.getBoundingClientRect();
+    const targetRect = targetSlot.getBoundingClientRect();
+    const from = {
+      x: pieceRect.left + pieceRect.width / 2,
+      y: pieceRect.top + pieceRect.height / 2,
+    };
+
+    return {
+      from,
+      to: {
+        x: from.x + (targetRect.left - originRect.left) * moveRatio,
+        y: from.y + (targetRect.top - originRect.top) * moveRatio,
+      },
+    };
+  }, {
+    pieceId,
+    originTargetId,
+    targetId,
+    ratio,
+  });
+
+  assert.ok(coords, `missing piece ${pieceId}, origin ${originTargetId}, or slot ${targetId}`);
+  await page.mouse.move(coords.from.x, coords.from.y);
+  await page.mouse.down();
+  await page.mouse.move(coords.to.x, coords.to.y, { steps: 12 });
+  await page.mouse.up();
+  await waitForNoDraggingPiece(page);
+}
+
 async function visitWithEmptyStorage(page) {
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   await page.evaluate(() => localStorage.clear());
@@ -426,7 +468,7 @@ async function verifyGlueMode(page) {
   await dragPieceToSlot(page, 'piece-0-1', 'piece-1-2');
   await dragPieceToSlot(page, 'piece-1-0', 'piece-2-1');
   await dragPieceToSlot(page, 'piece-1-1', 'piece-2-2');
-  await dragPieceToSlotByGrabOffset(page, 'piece-0-0', 'piece-0-0', 0.12, 0.12);
+  await dragPieceBySlotDeltaRatio(page, 'piece-1-1', 'piece-1-1', 'piece-0-0', 0.56);
 
   const cornerDragPlacements = await page.evaluate(() => (
     Object.fromEntries(
@@ -463,7 +505,7 @@ async function verifyGlueMode(page) {
   ]) {
     await dragPieceToSlot(page, source[0], source[1]);
   }
-  await dragPieceToSlotByGrabOffset(page, 'piece-0-0', 'piece-0-0', 0.12, 0.12);
+  await dragPieceBySlotDeltaRatio(page, 'piece-1-1', 'piece-1-1', 'piece-0-0', 0.56);
 
   const largeGroupPlacements = await page.evaluate(() => (
     Object.fromEntries(

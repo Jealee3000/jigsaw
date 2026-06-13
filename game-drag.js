@@ -183,6 +183,7 @@
 
       let score = 0;
       let readyPieces = 0;
+      let overlapTotal = 0;
 
       for (const item of drag.dragItems) {
         const targetId = targets.get(item.pieceId);
@@ -197,13 +198,19 @@
         if (ready) {
           readyPieces += 1;
         }
+        overlapTotal += details.overlapRatio || 0;
 
         score += correction
           ? details.snapThreshold - details.distance
           : details.overlapRatio * 1000 - details.distance;
       }
 
-      if (readyPieces !== drag.dragItems.length) {
+      const averageOverlap = overlapTotal / Math.max(1, drag.dragItems.length);
+      const groupReady = correction
+        ? readyPieces === drag.dragItems.length
+        : readyPieces === drag.dragItems.length || averageOverlap >= 0.28;
+
+      if (!groupReady) {
         continue;
       }
 
