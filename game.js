@@ -27,6 +27,10 @@
   const Modes = window.PuppyJigsawModes;
   const Library = window.PuppyJigsawLibrary;
   const State = window.PuppyJigsawState;
+  const ImageTools = window.PuppyJigsawImage;
+  const ImageService = window.PuppyJigsawImageService;
+  const HintTools = window.PuppyJigsawHints;
+  const CompletionFlow = window.PuppyJigsawCompletionFlow;
 
   const root = document.documentElement;
   const board = document.querySelector('#board');
@@ -44,7 +48,7 @@
   const gridButtons = Array.from(document.querySelectorAll('.grid-button'));
   const modeButtons = Array.from(document.querySelectorAll('.mode-button'));
   const suppressedClicks = new WeakSet();
-  const fallbackImageUrl = getFallbackImageUrl();
+  const fallbackImageUrl = ImageTools.getFallbackImageUrl();
 
   let gridSize = 2;
   let pieceIds = createPieceIds(gridSize);
@@ -56,8 +60,6 @@
   let activeDrag = null;
   let resizeObserver = null;
   let puzzleRatio = 600 / 420;
-  const hintPieces = new Map();
-  let hintGeneration = 0;
   let isRestoringState = false;
   let completionDismissed = false;
   let equivalentTargets = {};
@@ -85,56 +87,34 @@
     getAutoNextEnabled: () => modeState.autoNext,
     goToNextImage: () => goToNextImage(),
   });
-
-  function getFallbackImageUrl() {
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 420">
-        <defs>
-          <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stop-color="#8edcff"/>
-            <stop offset="1" stop-color="#dff7ff"/>
-          </linearGradient>
-          <linearGradient id="yard" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0" stop-color="#8ed866"/>
-            <stop offset="1" stop-color="#54b86e"/>
-          </linearGradient>
-        </defs>
-        <rect width="600" height="420" rx="24" fill="url(#sky)"/>
-        <circle cx="506" cy="78" r="43" fill="#ffd958"/>
-        <path d="M0 285 C82 249 168 276 246 268 C342 258 408 218 600 242 V420 H0 Z" fill="url(#yard)"/>
-        <g transform="translate(66 139)">
-          <rect x="2" y="69" width="170" height="122" rx="18" fill="#ffd37a" stroke="#5c4333" stroke-width="9"/>
-          <path d="M-15 78 L86 0 L190 78 Z" fill="#ef6f63" stroke="#5c4333" stroke-width="9" stroke-linejoin="round"/>
-          <rect x="28" y="114" width="44" height="77" rx="14" fill="#66b9e8" stroke="#5c4333" stroke-width="8"/>
-          <rect x="102" y="108" width="41" height="35" rx="9" fill="#fff7df" stroke="#5c4333" stroke-width="7"/>
-        </g>
-        <g transform="translate(354 129)">
-          <ellipse cx="73" cy="128" rx="72" ry="56" fill="#f0a25e" stroke="#5c4333" stroke-width="9"/>
-          <circle cx="68" cy="66" r="56" fill="#ffbd79" stroke="#5c4333" stroke-width="9"/>
-          <path d="M26 29 L12 -9 L56 11 Z" fill="#ffbd79" stroke="#5c4333" stroke-width="8" stroke-linejoin="round"/>
-          <path d="M109 29 L126 -9 L84 11 Z" fill="#ffbd79" stroke="#5c4333" stroke-width="8" stroke-linejoin="round"/>
-          <circle cx="48" cy="61" r="7" fill="#302820"/>
-          <circle cx="88" cy="61" r="7" fill="#302820"/>
-          <ellipse cx="69" cy="82" rx="15" ry="10" fill="#5c4333"/>
-          <path d="M51 99 Q69 114 90 99" fill="none" stroke="#5c4333" stroke-width="7" stroke-linecap="round"/>
-        </g>
-        <g transform="translate(113 284)">
-          <ellipse cx="58" cy="45" rx="58" ry="36" fill="#63b8e8" stroke="#254f73" stroke-width="8"/>
-          <circle cx="45" cy="30" r="33" fill="#85d2fb" stroke="#254f73" stroke-width="8"/>
-          <circle cx="33" cy="29" r="5" fill="#1d405c"/>
-          <circle cx="56" cy="29" r="5" fill="#1d405c"/>
-          <path d="M36 44 Q46 52 59 44" fill="none" stroke="#1d405c" stroke-width="5" stroke-linecap="round"/>
-        </g>
-        <g transform="translate(416 300)">
-          <circle cx="35" cy="34" r="23" fill="#ff7777" stroke="#5c4333" stroke-width="7"/>
-          <path d="M19 18 l32 32 M51 18 L19 50" stroke="#fff7df" stroke-width="6" stroke-linecap="round"/>
-          <rect x="65" y="16" width="72" height="38" rx="19" fill="#58c87a" stroke="#356c3d" stroke-width="7"/>
-        </g>
-      </svg>
-    `;
-
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-  }
+  const completionFlow = CompletionFlow.createCompletionFlow({
+    board,
+    celebration,
+    nextImageButton,
+    completionFeedback,
+    getCompletionDismissed: () => completionDismissed,
+    setCompletionDismissed: (value) => {
+      completionDismissed = value;
+    },
+    getImageLibrary: () => imageLibrary,
+    isPuzzleSolved,
+    renderImageLibrary,
+    saveState,
+    selectLibraryImage,
+    selectedImageName,
+    setStatus,
+  });
+  const hints = HintTools.createHintController({
+    getPieces,
+    getPieceIds: () => pieceIds,
+    getSlots,
+    getCurrentImageUrl: () => currentImageUrl,
+    getGridSize: () => gridSize,
+    getImageSignature: () => selectedImage()?.signature || '',
+    findDetailedHintPieceId,
+    saveState,
+    setStatus,
+  });
 
   function setStatus(message) {
     statusMessage.textContent = message;
@@ -160,7 +140,7 @@
       modeState,
       pieceIds,
       gameState,
-      hintPieces,
+      hintPieces: hints.getHintPieces(),
       completionDismissed,
       solved: isPuzzleSolved(),
     });
@@ -218,25 +198,13 @@
     syncLayoutSize();
   }
 
-  function loadImageSize(url) {
-    return new Promise((resolve) => {
-      const image = new Image();
-      image.onload = () => resolve({
-        width: image.naturalWidth || 600,
-        height: image.naturalHeight || 420,
-      });
-      image.onerror = () => resolve({ width: 600, height: 420 });
-      image.src = url;
-    });
-  }
-
   async function setCurrentImage(url) {
     const token = imageLoadToken + 1;
     imageLoadToken = token;
     currentImageUrl = url;
     setPuzzleImage(url);
 
-    const size = await loadImageSize(url);
+    const size = await ImageTools.loadImageSize(url);
     if (token === imageLoadToken) {
       setPuzzleRatio(size.width, size.height);
       await refreshEquivalentTargets();
@@ -277,77 +245,16 @@
     }
   }
 
-  function getBlankHintCandidates() {
-    const occupiedTargets = new Set(
-      getPieces()
-        .filter((piece) => piece.classList.contains('placed'))
-        .map((piece) => piece.dataset.currentTargetId)
-        .filter(Boolean),
-    );
-
-    return pieceIds.filter((pieceId) => (
-      !occupiedTargets.has(pieceId)
-      && !hintPieces.has(pieceId)
-    ));
-  }
-
   function addHintPiece() {
-    const candidates = getBlankHintCandidates();
-    if (candidates.length === 0) {
-      setStatus('已经没有空白格可以提示了');
-      return;
-    }
-
-    const fallback = candidates[Math.floor(Math.random() * candidates.length)];
-    const generation = hintGeneration;
-    const url = currentImageUrl;
-    const size = gridSize;
-    const signature = selectedImage()?.signature || '';
-
-    hintPieces.set(fallback, 0);
-    updateGuideHint();
-    setStatus(`已添加 ${hintPieces.size} 个提示`);
-    saveState();
-
-    findDetailedHintPieceId(url, pieceIds, size, candidates, signature)
-      .then((entry) => {
-        if (generation !== hintGeneration || url !== currentImageUrl || size !== gridSize || !entry) {
-          return;
-        }
-
-        if (!hintPieces.has(fallback) || (entry.pieceId !== fallback && hintPieces.has(entry.pieceId))) {
-          return;
-        }
-
-        hintPieces.delete(fallback);
-        hintPieces.set(entry.pieceId, entry.score);
-        updateGuideHint();
-        saveState();
-      })
-      .catch(() => {
-        updateGuideHint();
-      });
+    hints.addHintPiece();
   }
 
   function clearHints() {
-    hintPieces.clear();
-    hintGeneration += 1;
-    updateGuideHint();
+    hints.clearHints();
   }
 
   function updateGuideHint() {
-    for (const slot of getSlots()) {
-      const score = hintPieces.get(slot.dataset.targetId) || 0;
-      const isHint = hintPieces.has(slot.dataset.targetId);
-      slot.classList.toggle('guide-hint', isHint);
-      if (isHint) {
-        slot.dataset.hintReady = String(score > 0);
-        slot.dataset.hintScore = String(Math.round(score));
-      } else {
-        delete slot.dataset.hintReady;
-        delete slot.dataset.hintScore;
-      }
-    }
+    hints.updateGuideHint();
   }
 
   function isImageCompleted(image, saved) {
@@ -403,14 +310,7 @@
 
   async function loadImageLibrary() {
     try {
-      const response = await fetch('/api/images');
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || '读取图片列表失败');
-      }
-
-      imageLibrary = Array.isArray(result.images) ? result.images : [];
+      imageLibrary = await ImageService.fetchImageLibrary();
       cleanSavedDataForLibrary();
       renderImageLibrary();
 
@@ -530,8 +430,7 @@
     modeState.sound = saved.modeState?.sound === true;
     modeState.autoNext = saved.modeState?.autoNext === true;
     completionDismissed = saved.completionDismissed === true;
-    hintPieces.clear();
-    hintGeneration += 1;
+    clearHints();
 
     await setCurrentImage(image.url);
     setGridVariables();
@@ -560,13 +459,7 @@
       placePiece(piece, slot);
     }
 
-    for (const pieceId of Array.isArray(saved.hints) ? saved.hints : []) {
-      if (pieceIds.includes(pieceId) && !usedTargets.has(pieceId)) {
-        hintPieces.set(pieceId, 1);
-      }
-    }
-
-    updateGuideHint();
+    hints.restoreHints(Array.isArray(saved.hints) ? saved.hints : [], usedTargets);
     updateProgress();
     recomputeGlueGroups();
     showCelebrationIfComplete();
@@ -675,46 +568,15 @@
   }
 
   function showCelebrationIfComplete() {
-    if (isPuzzleSolved()) {
-      board.classList.add('solved');
-      renderImageLibrary();
-      if (!completionDismissed) {
-        celebration.hidden = false;
-        completionFeedback.playSound();
-        completionFeedback.scheduleAutoNext();
-        window.setTimeout(() => nextImageButton.focus(), 0);
-      }
-      return true;
-    }
-
-    board.classList.remove('solved');
-    return false;
+    return completionFlow.showCelebrationIfComplete();
   }
 
   function hideCelebration() {
-    completionFeedback.clear();
-    celebration.hidden = true;
-    completionDismissed = true;
-    saveState();
+    completionFlow.hideCelebration();
   }
 
   async function goToNextImage() {
-    if (imageLibrary.length === 0) {
-      hideCelebration();
-      return;
-    }
-
-    const currentName = selectedImageName();
-    const currentIndex = Math.max(0, imageLibrary.findIndex((image) => image.name === currentName));
-    const nextImage = imageLibrary[(currentIndex + 1) % imageLibrary.length];
-
-    completionFeedback.clear();
-    celebration.hidden = true;
-    completionDismissed = true;
-    saveState();
-    completionDismissed = false;
-    await selectLibraryImage(nextImage, { silent: true, skipSave: true });
-    setStatus(`下一张 ${nextImage.name}`);
+    await completionFlow.goToNextImage();
   }
 
   function markPieceLoose(pieceId) {
@@ -753,7 +615,7 @@
   }
 
   function placePiece(piece, slot) {
-    if (hintPieces.delete(slot.dataset.targetId)) {
+    if (hints.getHintPieces().delete(slot.dataset.targetId)) {
       updateGuideHint();
     }
 
@@ -1296,20 +1158,8 @@
     setStatus('正在上传图片');
 
     try {
-      const formData = new FormData();
-      formData.append('image', file, file.name);
-
-      const response = await fetch('/api/images', {
-        method: 'POST',
-        body: formData,
-      });
-      const result = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(result.error || '上传失败，请换一张图片');
-      }
-
-      imageLibrary = Array.isArray(result.images) ? result.images : [];
+      const result = await ImageService.uploadImage(file);
+      imageLibrary = result.images;
       renderImageLibrary();
       await selectLibraryImage(result.image, { silent: true });
       setStatus(`已上传 ${result.image.name}`);
