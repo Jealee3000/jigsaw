@@ -7,6 +7,16 @@
     isComplete,
     resetGameState,
   } = window.PuppyJigsawLogic;
+  const {
+    readSavedData,
+    writeSavedData,
+  } = window.PuppyJigsawStorage;
+  const {
+    analyzePieceFeatures,
+    buildEquivalentTargets,
+    createDefaultEquivalentTargets,
+    findDetailedHintPieceId,
+  } = window.PuppyJigsawImageAnalysis;
 
   const root = document.documentElement;
   const board = document.querySelector('#board');
@@ -24,7 +34,6 @@
   const modeButtons = Array.from(document.querySelectorAll('.mode-button'));
   const suppressedClicks = new WeakSet();
   const fallbackImageUrl = getFallbackImageUrl();
-  const storageKey = 'puppy-jigsaw-state-v2';
 
   let gridSize = 2;
   let pieceIds = createPieceIds(gridSize);
@@ -104,38 +113,6 @@
     statusMessage.textContent = message;
   }
 
-  function createEmptyStorageState() {
-    return {
-      version: 2,
-      currentImageName: null,
-      imageStates: {},
-    };
-  }
-
-  function readSavedData() {
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (!raw) {
-        return createEmptyStorageState();
-      }
-
-      const saved = JSON.parse(raw);
-      return saved?.version === 2 && saved.imageStates
-        ? saved
-        : createEmptyStorageState();
-    } catch (error) {
-      return createEmptyStorageState();
-    }
-  }
-
-  function writeSavedData(saved) {
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(saved));
-    } catch (error) {
-      // Local storage can be unavailable in restricted browser contexts.
-    }
-  }
-
   function selectedImageName() {
     return imageLibrary.find((image) => image.url === currentImageUrl)?.name || null;
   }
@@ -189,7 +166,7 @@
   }
 
   function defaultEquivalentTargets() {
-    return Object.fromEntries(pieceIds.map((pieceId) => [pieceId, [pieceId]]));
+    return createDefaultEquivalentTargets(pieceIds);
   }
 
   function publishDebugState() {
@@ -274,133 +251,6 @@
     }
   }
 
-  function getImageElement(url) {
-    return new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = reject;
-      image.src = url;
-    });
-  }
-
-  function featureDistance(first, second) {
-    const colorDistance = Math.hypot(
-      first.red - second.red,
-      first.green - second.green,
-      first.blue - second.blue,
-    );
-    const detailDistance = Math.abs(first.detail - second.detail);
-    const saturationDistance = Math.abs(first.saturation - second.saturation);
-
-    return colorDistance + detailDistance * 2 + saturationDistance * 0.5;
-  }
-
-  function localDifference(first, second) {
-    if (!first.pixels || !second.pixels || first.pixels.length !== second.pixels.length) {
-      return 0;
-    }
-
-    const differences = [];
-    for (let index = 0; index < first.pixels.length; index += 3) {
-      differences.push(Math.hypot(
-        first.pixels[index] - second.pixels[index],
-        first.pixels[index + 1] - second.pixels[index + 1],
-        first.pixels[index + 2] - second.pixels[index + 2],
-      ));
-    }
-
-    differences.sort((a, b) => b - a);
-    const count = Math.max(1, Math.ceil(differences.length * 0.02));
-    const strongest = differences.slice(0, count);
-    return strongest.reduce((sum, value) => sum + value, 0) / strongest.length;
-  }
-
-  function buildEquivalentTargets(features) {
-    const targets = defaultEquivalentTargets();
-
-    for (let firstIndex = 0; firstIndex < features.length; firstIndex += 1) {
-      const first = features[firstIndex];
-      for (let secondIndex = firstIndex + 1; secondIndex < features.length; secondIndex += 1) {
-        const second = features[secondIndex];
-        const lowDetail = first.detail < 18 && second.detail < 18;
-        const similar = featureDistance(first, second) < 18
-          && localDifference(first, second) < 32;
-
-        if (!lowDetail || !similar) {
-          continue;
-        }
-
-        targets[first.pieceId] = Array.from(new Set([...targets[first.pieceId], second.pieceId]));
-        targets[second.pieceId] = Array.from(new Set([...targets[second.pieceId], first.pieceId]));
-      }
-    }
-
-    return targets;
-  }
-
-  async function analyzePieceFeatures(url, size) {
-    const image = await getImageElement(url);
-    const sampleSize = 48;
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    const width = sampleSize * size;
-    const height = sampleSize * size;
-
-    canvas.width = width;
-    canvas.height = height;
-    context.drawImage(image, 0, 0, width, height);
-
-    return pieceIds.map((pieceId) => {
-      const { row, col } = parsePieceId(pieceId);
-      const data = context.getImageData(
-        col * sampleSize,
-        row * sampleSize,
-        sampleSize,
-        sampleSize,
-      ).data;
-      let red = 0;
-      let green = 0;
-      let blue = 0;
-      let light = 0;
-      let lightSquared = 0;
-      let saturation = 0;
-      const pixelsSignature = [];
-      const pixels = data.length / 4;
-
-      for (let index = 0; index < data.length; index += 4) {
-        const pixelRed = data[index];
-        const pixelGreen = data[index + 1];
-        const pixelBlue = data[index + 2];
-        const pixelLight = (pixelRed + pixelGreen + pixelBlue) / 3;
-
-        red += pixelRed;
-        green += pixelGreen;
-        blue += pixelBlue;
-        pixelsSignature.push(pixelRed, pixelGreen, pixelBlue);
-        light += pixelLight;
-        lightSquared += pixelLight * pixelLight;
-        saturation += Math.max(pixelRed, pixelGreen, pixelBlue)
-          - Math.min(pixelRed, pixelGreen, pixelBlue);
-      }
-
-      red /= pixels;
-      green /= pixels;
-      blue /= pixels;
-      light /= pixels;
-      lightSquared /= pixels;
-
-      return {
-        pieceId,
-        red,
-        green,
-        blue,
-        detail: Math.sqrt(Math.max(0, lightSquared - light * light)),
-        saturation: saturation / pixels,
-        pixels: pixelsSignature,
-      };
-    });
-  }
-
   async function refreshEquivalentTargets() {
     const token = equivalentAnalysisToken + 1;
     const url = currentImageUrl;
@@ -410,67 +260,15 @@
     setEquivalentTargets(defaultEquivalentTargets());
 
     try {
-      const features = await analyzePieceFeatures(url, size);
+      const features = await analyzePieceFeatures(url, pieceIds, size);
       if (token === equivalentAnalysisToken && url === currentImageUrl && size === gridSize) {
-        setEquivalentTargets(buildEquivalentTargets(features));
+        setEquivalentTargets(buildEquivalentTargets(pieceIds, features));
       }
     } catch (error) {
       if (token === equivalentAnalysisToken) {
         setEquivalentTargets(defaultEquivalentTargets());
       }
     }
-  }
-
-  async function findDetailedHintPieceId(url, size, allowedPieceIds = pieceIds) {
-    const image = await getImageElement(url);
-    const sampleSize = 32;
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    const width = sampleSize * size;
-    const height = sampleSize * size;
-
-    canvas.width = width;
-    canvas.height = height;
-    context.drawImage(image, 0, 0, width, height);
-
-    const allowed = new Set(allowedPieceIds);
-    const scores = pieceIds.filter((pieceId) => allowed.has(pieceId)).map((pieceId) => {
-      const { row, col } = parsePieceId(pieceId);
-      const data = context.getImageData(
-        col * sampleSize,
-        row * sampleSize,
-        sampleSize,
-        sampleSize,
-      ).data;
-      let mean = 0;
-      let meanSquared = 0;
-      let saturation = 0;
-      const pixels = data.length / 4;
-
-      for (let index = 0; index < data.length; index += 4) {
-        const red = data[index];
-        const green = data[index + 1];
-        const blue = data[index + 2];
-        const light = (red + green + blue) / 3;
-        mean += light;
-        meanSquared += light * light;
-        saturation += Math.max(red, green, blue) - Math.min(red, green, blue);
-      }
-
-      mean /= pixels;
-      meanSquared /= pixels;
-
-      return {
-        pieceId,
-        score: Math.sqrt(Math.max(0, meanSquared - mean * mean)) + saturation / pixels / 3,
-      };
-    }).sort((first, second) => second.score - first.score);
-
-    const usefulScores = scores.filter((entry) => entry.score > 8);
-    const candidates = usefulScores.length > 0
-      ? usefulScores.slice(0, Math.max(1, Math.ceil(usefulScores.length / 2)))
-      : scores;
-    return candidates[Math.floor(Math.random() * candidates.length)] || scores[0] || null;
   }
 
   function getBlankHintCandidates() {
@@ -504,7 +302,7 @@
     setStatus(`已添加 ${hintPieces.size} 个提示`);
     saveState();
 
-    findDetailedHintPieceId(url, size, candidates)
+    findDetailedHintPieceId(url, pieceIds, size, candidates)
       .then((entry) => {
         if (generation !== hintGeneration || url !== currentImageUrl || size !== gridSize || !entry) {
           return;

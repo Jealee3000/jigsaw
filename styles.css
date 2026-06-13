@@ -352,11 +352,18 @@ h1 {
   background-size: cover;
   background-position: center;
   opacity: .32;
+  pointer-events: none;
   transition: opacity .18s ease;
 }
 
 .board.hide-guide .guide-image {
   opacity: 0;
+}
+
+.board.solved .guide-image {
+  z-index: 12;
+  opacity: 1;
+  transition: none;
 }
 
 .slot-layer {

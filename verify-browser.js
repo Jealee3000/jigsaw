@@ -117,25 +117,34 @@ async function assertGrid(page, size) {
 }
 
 async function assertSolvedSlotGuidesHidden(page, expectedCount) {
-  const slotStyles = await page.evaluate(() => (
-    Array.from(document.querySelectorAll('.slot')).map((slot) => {
+  const solvedView = await page.evaluate(() => ({
+    guide: (() => {
+      const style = getComputedStyle(document.querySelector('.guide-image'));
+      return {
+        opacity: style.opacity,
+        zIndex: Number(style.zIndex),
+      };
+    })(),
+    slots: Array.from(document.querySelectorAll('.slot')).map((slot) => {
       const style = getComputedStyle(slot);
       return {
         targetId: slot.dataset.targetId,
         borderTopColor: style.borderTopColor,
         backgroundImage: style.backgroundImage,
       };
-    })
-  ));
+    }),
+  }));
 
   assert.equal(await page.locator('#board').evaluate((node) => node.classList.contains('solved')), true);
-  assert.equal(slotStyles.length, expectedCount);
+  assert.equal(solvedView.guide.opacity, '1');
+  assert.ok(solvedView.guide.zIndex > 5, `guide should render above pieces: ${JSON.stringify(solvedView.guide)}`);
+  assert.equal(solvedView.slots.length, expectedCount);
   assert.deepEqual(
-    slotStyles.filter((slot) => slot.borderTopColor !== 'rgba(0, 0, 0, 0)'),
+    solvedView.slots.filter((slot) => slot.borderTopColor !== 'rgba(0, 0, 0, 0)'),
     [],
   );
   assert.deepEqual(
-    slotStyles.filter((slot) => slot.backgroundImage !== 'none'),
+    solvedView.slots.filter((slot) => slot.backgroundImage !== 'none'),
     [],
   );
 }
