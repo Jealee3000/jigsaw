@@ -140,6 +140,7 @@
 
     const offset = targetOffset(drag.originTargetId, activeTargetId);
     const targets = new Map();
+    const usedTargets = new Set();
 
     for (const item of drag.dragItems) {
       if (!item.originTargetId) {
@@ -147,11 +148,12 @@
       }
 
       const targetId = shiftedTargetId(item.originTargetId, offset, gridSize);
-      if (!targetId || targets.has(targetId)) {
+      if (!targetId || usedTargets.has(targetId)) {
         return null;
       }
 
       targets.set(item.pieceId, targetId);
+      usedTargets.add(targetId);
     }
 
     return targets;
@@ -200,6 +202,7 @@
 
     const offset = targetOffset(originAnchorTargetId, anchorTargetId);
     const targets = new Map();
+    const usedTargets = new Set();
 
     for (const item of drag.dragItems) {
       if (!item.originTargetId) {
@@ -207,14 +210,93 @@
       }
 
       const targetId = shiftedTargetId(item.originTargetId, offset, gridSize);
-      if (!targetId || targets.has(targetId)) {
+      if (!targetId || usedTargets.has(targetId)) {
         return null;
       }
 
       targets.set(item.pieceId, targetId);
+      usedTargets.add(targetId);
     }
 
     return { targets, score: Number.POSITIVE_INFINITY };
+  }
+
+  function buildGroupBoxDrop({
+    drag,
+    slots,
+    gridSize,
+    shiftedTargetId,
+    targetOffset,
+  }) {
+    let anchorRow = Number.POSITIVE_INFINITY;
+    let anchorCol = Number.POSITIVE_INFINITY;
+    const items = [];
+
+    for (const item of drag.dragItems || []) {
+      const { row, col } = parseTargetId(item.originTargetId);
+      if (!Number.isFinite(row) || !Number.isFinite(col)) {
+        return null;
+      }
+
+      anchorRow = Math.min(anchorRow, row);
+      anchorCol = Math.min(anchorCol, col);
+      items.push(item);
+    }
+
+    if (!items.length || !Number.isFinite(anchorRow) || !Number.isFinite(anchorCol)) {
+      return null;
+    }
+
+    const originAnchorTargetId = `piece-${anchorRow}-${anchorCol}`;
+    const rects = items.map((item) => item.piece.getBoundingClientRect());
+    if (!rects.length) {
+      return null;
+    }
+
+    const groupLeft = Math.min(...rects.map((rect) => rect.left));
+    const groupTop = Math.min(...rects.map((rect) => rect.top));
+    let bestSlot = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const slot of slots) {
+      const rect = slot.getBoundingClientRect();
+      const distance = Math.hypot(groupLeft - rect.left, groupTop - rect.top);
+      const snapLimit = Math.max(rect.width, rect.height) * 0.72;
+      if (distance <= snapLimit && distance < bestDistance) {
+        bestSlot = slot;
+        bestDistance = distance;
+      }
+    }
+
+    if (!bestSlot) {
+      return null;
+    }
+
+    const offset = targetOffset(originAnchorTargetId, bestSlot.dataset.targetId);
+    const targets = new Map();
+    const usedTargets = new Set();
+
+    for (const item of items) {
+      const { row, col } = parseTargetId(item.originTargetId);
+      const nextRow = row + offset.row;
+      const nextCol = col + offset.col;
+      const targetId = (
+        nextRow >= 0
+        && nextCol >= 0
+        && nextRow < gridSize
+        && nextCol < gridSize
+      )
+        ? `piece-${nextRow}-${nextCol}`
+        : null;
+      if (!targetId || usedTargets.has(targetId)) {
+        return null;
+      }
+
+      targets.set(item.pieceId, targetId);
+      usedTargets.add(targetId);
+    }
+
+    return { targets, score: Number.POSITIVE_INFINITY - bestDistance };
   }
 
   function getBestGroupDrop({
@@ -407,6 +489,7 @@
     prepareDraggingPiece,
     buildGroupDropTargets,
     buildAnchoredGroupDrop,
+    buildGroupBoxDrop,
     getBestGroupDrop,
     buildGroupSwapTargets,
     canPlaceGroup,

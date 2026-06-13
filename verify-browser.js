@@ -546,9 +546,40 @@ async function verifyGlueMode(page) {
   ]) {
     await dragPieceToSlot(page, source[0], source[1]);
   }
-  await dragPieceToSlot(page, 'piece-1-1', 'piece-0-0');
+  await dragPieceToSlot(page, 'piece-1-1', 'piece-1-1');
 
   let anchoredPlacements = await page.evaluate(() => (
+    Object.fromEntries(
+      Array.from(document.querySelectorAll('.piece.placed')).map((piece) => [
+        piece.dataset.pieceId,
+        piece.dataset.currentTargetId,
+      ]),
+    )
+  ));
+  for (const pieceId of ['piece-0-0', 'piece-0-1', 'piece-1-0', 'piece-1-1']) {
+    assert.equal(anchoredPlacements[pieceId], pieceId);
+  }
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  await page.locator('.grid-button[data-grid-size="2"]').click();
+  await assertGrid(page, 2);
+
+  await page.locator('.grid-button[data-grid-size="4"]').click();
+  await assertGrid(page, 4);
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  for (const source of [
+    ['piece-0-0', 'piece-2-2'],
+    ['piece-0-1', 'piece-2-3'],
+    ['piece-1-0', 'piece-3-2'],
+    ['piece-1-1', 'piece-3-3'],
+  ]) {
+    await dragPieceToSlot(page, source[0], source[1]);
+  }
+  await dragPieceToSlot(page, 'piece-1-1', 'piece-0-0');
+
+  anchoredPlacements = await page.evaluate(() => (
     Object.fromEntries(
       Array.from(document.querySelectorAll('.piece.placed')).map((piece) => [
         piece.dataset.pieceId,
@@ -599,6 +630,42 @@ async function verifyGlueMode(page) {
   ]) {
     assert.equal(anchoredPlacements[pieceId], pieceId);
   }
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  await page.locator('.grid-button[data-grid-size="2"]').click();
+  await assertGrid(page, 2);
+
+  await page.locator('.grid-button[data-grid-size="4"]').click();
+  await assertGrid(page, 4);
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  for (const source of [
+    ['piece-1-1', 'piece-1-2'],
+    ['piece-1-2', 'piece-1-3'],
+    ['piece-2-1', 'piece-2-2'],
+    ['piece-2-2', 'piece-2-3'],
+    ['piece-3-1', 'piece-3-2'],
+    ['piece-3-2', 'piece-3-3'],
+  ]) {
+    await dragPieceToSlot(page, source[0], source[1]);
+  }
+  await dragPieceBySlotDeltaRatio(page, 'piece-2-2', 'piece-1-2', 'piece-0-0', 1);
+
+  const shiftedSourcePlacements = await page.evaluate(() => (
+    Object.fromEntries(
+      Array.from(document.querySelectorAll('.piece.placed')).map((piece) => [
+        piece.dataset.pieceId,
+        piece.dataset.currentTargetId,
+      ]),
+    )
+  ));
+  assert.equal(shiftedSourcePlacements['piece-1-1'], 'piece-0-0');
+  assert.equal(shiftedSourcePlacements['piece-1-2'], 'piece-0-1');
+  assert.equal(shiftedSourcePlacements['piece-2-1'], 'piece-1-0');
+  assert.equal(shiftedSourcePlacements['piece-2-2'], 'piece-1-1');
+  assert.equal(shiftedSourcePlacements['piece-3-1'], 'piece-2-0');
+  assert.equal(shiftedSourcePlacements['piece-3-2'], 'piece-2-1');
 
   await page.locator('.mode-button[data-mode="correction"]').click();
   await page.locator('.mode-button[data-mode="glue"]').click();
