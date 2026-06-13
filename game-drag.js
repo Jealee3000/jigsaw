@@ -157,6 +157,66 @@
     return targets;
   }
 
+  function parseTargetId(targetId) {
+    const [, row, col] = targetId?.match(/^piece-(\d+)-(\d+)$/) || [];
+    return {
+      row: Number(row),
+      col: Number(col),
+    };
+  }
+
+  function getGroupAnchorTargetId(drag) {
+    let anchorRow = Number.POSITIVE_INFINITY;
+    let anchorCol = Number.POSITIVE_INFINITY;
+
+    for (const item of drag.dragItems || []) {
+      const { row, col } = parseTargetId(item.originTargetId);
+      if (!Number.isFinite(row) || !Number.isFinite(col)) {
+        return null;
+      }
+
+      anchorRow = Math.min(anchorRow, row);
+      anchorCol = Math.min(anchorCol, col);
+    }
+
+    if (!Number.isFinite(anchorRow) || !Number.isFinite(anchorCol)) {
+      return null;
+    }
+
+    return `piece-${anchorRow}-${anchorCol}`;
+  }
+
+  function buildAnchoredGroupDrop({
+    drag,
+    anchorTargetId,
+    gridSize,
+    shiftedTargetId,
+    targetOffset,
+  }) {
+    const originAnchorTargetId = getGroupAnchorTargetId(drag);
+    if (!originAnchorTargetId || !anchorTargetId) {
+      return null;
+    }
+
+    const offset = targetOffset(originAnchorTargetId, anchorTargetId);
+    const targets = new Map();
+
+    for (const item of drag.dragItems) {
+      if (!item.originTargetId) {
+        return null;
+      }
+
+      const targetId = shiftedTargetId(item.originTargetId, offset, gridSize);
+      if (!targetId || targets.has(targetId)) {
+        return null;
+      }
+
+      targets.set(item.pieceId, targetId);
+    }
+
+    return { targets, score: Number.POSITIVE_INFINITY };
+  }
+
   function getBestGroupDrop({
     drag,
     slots,
@@ -346,6 +406,7 @@
     moveDraggedPiecesToPointer,
     prepareDraggingPiece,
     buildGroupDropTargets,
+    buildAnchoredGroupDrop,
     getBestGroupDrop,
     buildGroupSwapTargets,
     canPlaceGroup,

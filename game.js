@@ -1047,6 +1047,15 @@
     }
 
     if (drag.groupPieceIds?.length > 1) {
+      const anchoredGroupDrop = closestSlot && Drag.isDropReady(closestSlot, modeState.correction)
+        ? Drag.buildAnchoredGroupDrop({
+          drag,
+          anchorTargetId: closestSlot.targetId,
+          gridSize,
+          shiftedTargetId,
+          targetOffset,
+        })
+        : null;
       const groupDrop = Drag.getBestGroupDrop({
         drag,
         slots: getSlots(),
@@ -1055,7 +1064,7 @@
         shiftedTargetId,
         targetOffset,
       });
-      const groupTargets = groupDrop?.targets || null;
+      const groupTargets = anchoredGroupDrop?.targets || groupDrop?.targets || null;
       const groupSwapTargets = groupTargets
         ? Drag.buildGroupSwapTargets({
           drag,
