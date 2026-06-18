@@ -470,6 +470,44 @@ async function verifyGlueMode(page) {
 
   await page.locator('.mode-button[data-mode="correction"]').click();
   await page.locator('.mode-button[data-mode="glue"]').click();
+  await page.locator('.grid-button[data-grid-size="4"]').click();
+  await assertGrid(page, 4);
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  for (const source of [
+    ['piece-0-0', 'piece-1-1'],
+    ['piece-0-1', 'piece-1-2'],
+    ['piece-1-0', 'piece-2-1'],
+    ['piece-1-1', 'piece-2-2'],
+    ['piece-2-0', 'piece-1-0'],
+    ['piece-2-1', 'piece-2-0'],
+  ]) {
+    await dragPieceToSlot(page, source[0], source[1]);
+  }
+  await dragPieceToSlot(page, 'piece-0-0', 'piece-1-0');
+
+  const crowdedSwapPlacements = await page.evaluate(() => (
+    Object.fromEntries(
+      Array.from(document.querySelectorAll('.piece.placed')).map((piece) => [
+        piece.dataset.pieceId,
+        piece.dataset.currentTargetId,
+      ]),
+    )
+  ));
+  assert.equal(crowdedSwapPlacements['piece-0-0'], 'piece-1-0');
+  assert.equal(crowdedSwapPlacements['piece-0-1'], 'piece-1-1');
+  assert.equal(crowdedSwapPlacements['piece-1-0'], 'piece-2-0');
+  assert.equal(crowdedSwapPlacements['piece-1-1'], 'piece-2-1');
+  assert.equal(crowdedSwapPlacements['piece-2-0'], 'piece-1-2');
+  assert.equal(crowdedSwapPlacements['piece-2-1'], 'piece-2-2');
+  assert.equal(
+    new Set(Object.values(crowdedSwapPlacements)).size,
+    Object.keys(crowdedSwapPlacements).length,
+  );
+
+  await page.locator('.mode-button[data-mode="correction"]').click();
+  await page.locator('.mode-button[data-mode="glue"]').click();
+  await page.locator('.grid-button[data-grid-size="2"]').click();
   await assertGrid(page, 2);
 
   await page.locator('.grid-button[data-grid-size="3"]').click();

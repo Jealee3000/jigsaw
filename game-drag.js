@@ -167,6 +167,21 @@
     };
   }
 
+  function targetDistance(firstTargetId, secondTargetId) {
+    const first = parseTargetId(firstTargetId);
+    const second = parseTargetId(secondTargetId);
+    if (
+      !Number.isFinite(first.row)
+      || !Number.isFinite(first.col)
+      || !Number.isFinite(second.row)
+      || !Number.isFinite(second.col)
+    ) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    return Math.hypot(first.row - second.row, first.col - second.col);
+  }
+
   function getGroupAnchorTargetId(drag) {
     let anchorRow = Number.POSITIVE_INFINITY;
     let anchorCol = Number.POSITIVE_INFINITY;
@@ -404,6 +419,10 @@
     const inverseOffset = { row: -offset.row, col: -offset.col };
     const groupSet = new Set(drag.groupPieceIds);
     const blockerSet = new Set(blockers.map((piece) => piece.dataset.pieceId));
+    const groupFinalTargets = new Set(targets.values());
+    const vacatedTargets = (drag.dragItems || [])
+      .map((item) => item.originTargetId)
+      .filter((targetId) => targetId && !groupFinalTargets.has(targetId));
     const swapTargets = new Map();
     const usedTargets = new Set();
 
@@ -411,9 +430,27 @@
       const pieceId = blocker.dataset.pieceId;
       const piece = gameState.pieces[pieceId];
       const currentTargetId = blocker.dataset.currentTargetId || piece?.currentTargetId;
-      const swapTargetId = shiftedTargetId(currentTargetId, inverseOffset, gridSize);
+      const preferredSwapTargetId = shiftedTargetId(currentTargetId, inverseOffset, gridSize);
+      const fallbackSwapTargetId = [...vacatedTargets]
+        .filter((targetId) => !usedTargets.has(targetId))
+        .sort((first, second) => (
+          targetDistance(first, preferredSwapTargetId || currentTargetId)
+          - targetDistance(second, preferredSwapTargetId || currentTargetId)
+        ))[0];
+      const swapTargetId = (
+        preferredSwapTargetId
+        && vacatedTargets.includes(preferredSwapTargetId)
+        && !usedTargets.has(preferredSwapTargetId)
+      )
+        ? preferredSwapTargetId
+        : fallbackSwapTargetId;
 
-      if (!piece || !swapTargetId || usedTargets.has(swapTargetId)) {
+      if (
+        !piece
+        || !swapTargetId
+        || usedTargets.has(swapTargetId)
+        || groupFinalTargets.has(swapTargetId)
+      ) {
         return null;
       }
 
@@ -453,6 +490,40 @@
   }) {
     const groupSet = new Set(groupPieceIds);
     const swappableBlockers = new Set(swapTargets.keys());
+    const finalTargets = new Set();
+
+    for (const targetId of targets.values()) {
+      if (finalTargets.has(targetId)) {
+        return false;
+      }
+
+      finalTargets.add(targetId);
+    }
+
+    for (const [pieceId, targetId] of swapTargets.entries()) {
+      if (!getSlotByTargetId(targetId) || finalTargets.has(targetId)) {
+        return false;
+      }
+
+      const occupiedPiece = getPlacedPieceAtTarget(targetId, pieceId);
+      if (
+        occupiedPiece
+        && !groupSet.has(occupiedPiece.dataset.pieceId)
+        && !swappableBlockers.has(occupiedPiece.dataset.pieceId)
+      ) {
+        return false;
+      }
+
+      const piece = gameState.pieces[pieceId];
+      if (
+        modeState.correction
+        && !isTargetAccepted(piece, targetId, equivalentTargets)
+      ) {
+        return false;
+      }
+
+      finalTargets.add(targetId);
+    }
 
     for (const [pieceId, targetId] of targets.entries()) {
       if (!getSlotByTargetId(targetId)) {
