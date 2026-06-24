@@ -180,6 +180,8 @@ h1 {
 .grid-button:focus-visible,
 .mode-button:focus-visible,
 .file-control:focus-within,
+.library-search:focus-visible,
+.library-filter-button:focus-visible,
 .image-card:focus-visible,
 .piece:focus-visible {
   outline: 5px solid #2457d6;
@@ -214,7 +216,7 @@ h1 {
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 10px;
   overflow: hidden;
 }
@@ -229,6 +231,65 @@ h1 {
 .library-heading h2 {
   font-size: 20px;
   line-height: 1.1;
+}
+
+.library-tools {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.library-search {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 3px solid rgba(38, 49, 58, .72);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  outline: none;
+  box-shadow: 0 4px 0 var(--shadow);
+}
+
+.library-search:focus {
+  border-color: #2457d6;
+}
+
+.library-filter {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.library-filter-button {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 5px;
+  overflow: hidden;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 4px 0 var(--shadow);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-filter-button.active {
+  background: #fff1a9;
+}
+
+.library-filter-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 var(--shadow);
 }
 
 .image-list {

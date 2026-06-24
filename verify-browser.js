@@ -875,6 +875,42 @@ async function verifyImageLibrary(page) {
   await firstCard.click();
   await page.locator('.image-card.selected[data-image-name="browser-test-yellow.svg"]').waitFor({ state: 'visible' });
   assert.equal(await currentPuzzleImage(page), firstImage);
+
+  for (const pieceId of ['piece-0-0', 'piece-0-1', 'piece-1-0', 'piece-1-1']) {
+    await dragPieceToSlot(page, pieceId);
+  }
+  await page.locator('#see-again-button').click();
+  await page.locator('#celebration').waitFor({ state: 'hidden' });
+
+  await page.locator('.library-filter-button[data-filter-status="completed"]').click();
+  await page.locator('.image-card[data-image-name="browser-test-yellow.svg"]').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.image-card[data-image-name="browser-test-green.svg"]').count(), 0);
+
+  await page.locator('.library-filter-button[data-filter-status="continue"]').click();
+  await page.locator('.image-card[data-image-name="browser-test-green.svg"]').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.image-card[data-image-name="browser-test-yellow.svg"]').count(), 0);
+
+  await page.locator('#library-search').fill('yellow');
+  await page.locator('.image-empty').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.image-empty').textContent(), '没有找到图片');
+
+  await page.locator('.library-filter-button[data-filter-status="completed"]').click();
+  await page.locator('.image-card[data-image-name="browser-test-yellow.svg"]').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.image-card[data-image-name="browser-test-green.svg"]').count(), 0);
+
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.equal(await page.locator('#library-search').inputValue(), 'yellow');
+  assert.equal(
+    await page.locator('.library-filter-button[data-filter-status="completed"]').getAttribute('aria-pressed'),
+    'true',
+  );
+  await page.locator('.image-card[data-image-name="browser-test-yellow.svg"]').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.image-card[data-image-name="browser-test-green.svg"]').count(), 0);
+
+  await page.locator('#library-search').fill('');
+  await page.locator('.library-filter-button[data-filter-status="all"]').click();
+  await page.locator('.image-card[data-image-name="browser-test-yellow.svg"]').waitFor({ state: 'visible' });
+  await page.locator('.image-card[data-image-name="browser-test-green.svg"]').waitFor({ state: 'visible' });
 }
 
 async function verifyAutoNextCompletion(page) {

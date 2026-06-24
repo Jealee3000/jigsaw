@@ -66,6 +66,21 @@
         <div class="library-heading">
           <h2>图片列表</h2>
         </div>
+        <div class="library-tools" aria-label="图片筛选">
+          <input
+            class="library-search"
+            id="library-search"
+            type="search"
+            placeholder="搜索图片"
+            aria-label="搜索图片"
+            autocomplete="off"
+          >
+          <div class="library-filter" role="group" aria-label="完成状态筛选">
+            <button class="library-filter-button active" type="button" data-filter-status="all" aria-pressed="true">全部</button>
+            <button class="library-filter-button" type="button" data-filter-status="continue" aria-pressed="false">继续玩</button>
+            <button class="library-filter-button" type="button" data-filter-status="completed" aria-pressed="false">已完成</button>
+          </div>
+        </div>
         <div class="image-list" id="image-list" aria-live="polite"></div>
       </section>
 

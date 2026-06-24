@@ -44,11 +44,14 @@
   const completionCountdown = document.querySelector('#completion-countdown');
   const imageInput = document.querySelector('#image-input');
   const imageList = document.querySelector('#image-list');
+  const librarySearch = document.querySelector('#library-search');
   const statusMessage = document.querySelector('#status-message');
   const gridButtons = Array.from(document.querySelectorAll('.grid-button'));
   const modeButtons = Array.from(document.querySelectorAll('.mode-button'));
+  const libraryFilterButtons = Array.from(document.querySelectorAll('.library-filter-button'));
   const suppressedClicks = new WeakSet();
   const fallbackImageUrl = ImageTools.getFallbackImageUrl();
+  const libraryFilterStatuses = new Set(['all', 'continue', 'completed']);
 
   let gridSize = 2;
   let pieceIds = createPieceIds(gridSize);
@@ -73,6 +76,7 @@
     sound: false,
     autoNext: false,
   };
+  let libraryFilterState = normalizeLibraryFilter(readSavedData().libraryFilter);
   const layout = Layout.createLayoutController({
     root,
     board,
@@ -128,6 +132,32 @@
     return State.selectedImage(imageLibrary, currentImageUrl);
   }
 
+  function normalizeLibraryFilter(filter = {}) {
+    const status = libraryFilterStatuses.has(filter.status) ? filter.status : 'all';
+    return {
+      query: typeof filter.query === 'string' ? filter.query : '',
+      status,
+    };
+  }
+
+  function updateLibraryFilterControls() {
+    if (librarySearch && librarySearch.value !== libraryFilterState.query) {
+      librarySearch.value = libraryFilterState.query;
+    }
+
+    for (const button of libraryFilterButtons) {
+      const active = button.dataset.filterStatus === libraryFilterState.status;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  }
+
+  function saveLibraryFilterState() {
+    const saved = readSavedData();
+    saved.libraryFilter = { ...libraryFilterState };
+    writeSavedData(saved);
+  }
+
   function orderedPieceIds(ids) {
     return State.orderedPieceIds(pieceIds, ids);
   }
@@ -161,6 +191,7 @@
     const imageName = selectedImageName();
     const saved = readSavedData();
     saved.currentImageName = imageName;
+    saved.libraryFilter = { ...libraryFilterState };
 
     if (imageName) {
       saved.imageStates[imageName] = serializeCurrentImageState();
@@ -265,16 +296,38 @@
     return saved.imageStates?.[image.name]?.solved === true;
   }
 
+  function matchesLibraryFilter(image, saved) {
+    const query = libraryFilterState.query.trim().toLocaleLowerCase('zh-CN');
+    const imageName = image.name.toLocaleLowerCase('zh-CN');
+    if (query && !imageName.includes(query)) {
+      return false;
+    }
+
+    const completed = isImageCompleted(image, saved);
+    if (libraryFilterState.status === 'completed') {
+      return completed;
+    }
+
+    if (libraryFilterState.status === 'continue') {
+      return !completed;
+    }
+
+    return true;
+  }
+
   function renderImageLibrary() {
     const saved = readSavedData();
+    const visibleImages = imageLibrary.filter((image) => matchesLibraryFilter(image, saved));
     Library.renderImageLibrary({
       imageList,
-      imageLibrary,
+      imageLibrary: visibleImages,
       currentImageUrl,
       saved,
       isImageCompleted,
       onSelectImage: selectLibraryImage,
+      emptyMessage: imageLibrary.length === 0 ? 'images 文件夹还没有图片' : '没有找到图片',
     });
+    updateLibraryFilterControls();
   }
 
   async function selectLibraryImage(image, options = {}) {
@@ -1101,6 +1154,30 @@
     setStatus(modeState[mode] ? `已开启 ${event.currentTarget.textContent}` : `已关闭 ${event.currentTarget.textContent}`);
   }
 
+  function setLibraryFilter(nextFilter) {
+    libraryFilterState = normalizeLibraryFilter({
+      ...libraryFilterState,
+      ...nextFilter,
+    });
+    renderImageLibrary();
+    saveLibraryFilterState();
+  }
+
+  function clearLibraryFilter() {
+    setLibraryFilter({
+      query: '',
+      status: 'all',
+    });
+  }
+
+  function onLibrarySearchInput(event) {
+    setLibraryFilter({ query: event.currentTarget.value });
+  }
+
+  function onLibraryFilterButtonClick(event) {
+    setLibraryFilter({ status: event.currentTarget.dataset.filterStatus });
+  }
+
   function resetGame(options = {}) {
     gameState = resetGameState(pieceIds);
     activeDrag = null;
@@ -1160,6 +1237,7 @@
     try {
       const result = await ImageService.uploadImage(file);
       imageLibrary = result.images;
+      clearLibraryFilter();
       renderImageLibrary();
       await selectLibraryImage(result.image, { silent: true });
       setStatus(`已上传 ${result.image.name}`);
@@ -1178,6 +1256,11 @@
     button.addEventListener('click', onModeButtonClick);
   }
 
+  for (const button of libraryFilterButtons) {
+    button.addEventListener('click', onLibraryFilterButtonClick);
+  }
+
+  librarySearch?.addEventListener('input', onLibrarySearchInput);
   imageInput.addEventListener('change', onImageChange);
   resetButton.addEventListener('click', () => resetGame());
   seeAgainButton.addEventListener('click', hideCelebration);

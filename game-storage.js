@@ -5,6 +5,10 @@
     return {
       version: 2,
       currentImageName: null,
+      libraryFilter: {
+        query: '',
+        status: 'all',
+      },
       imageStates: {},
     };
   }

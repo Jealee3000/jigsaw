@@ -6,13 +6,14 @@
     saved,
     isImageCompleted,
     onSelectImage,
+    emptyMessage = 'images 文件夹还没有图片',
   }) {
     imageList.replaceChildren();
 
     if (imageLibrary.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'image-empty';
-      empty.textContent = 'images 文件夹还没有图片';
+      empty.textContent = emptyMessage;
       imageList.appendChild(empty);
       return;
     }
